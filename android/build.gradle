@@ -1,0 +1,31 @@
+buildscript {
+    ext.kotlin_version = '1.9.20' // Specify Kotlin version
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:8.7.3' // Ensure compatibility with your Gradle Wrapper version
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+    }
+}
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+// Set a common build directory for the root project
+rootProject.buildDir = '../build'
+
+// Configure build directories for subprojects
+subprojects {
+    project.buildDir = "${rootProject.buildDir}/${project.name}"
+}
+
+// Define a clean task to delete the root project's build directory
+tasks.register("clean", Delete) {
+    delete rootProject.buildDir
+}

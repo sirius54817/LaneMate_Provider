@@ -1,0 +1,41 @@
+platform :ios, '14.0'
+
+# CocoaPods analytics sends network stats synchronously affecting flutter build latency.
+ENV['COCOAPODS_DISABLE_STATS'] = 'true'
+
+project 'Runner', {
+  'Debug' => :debug,
+  'Profile' => :release,
+  'Release' => :release,
+}
+
+def flutter_install_all_pods(installer)
+  installer.pods_project.targets.each do |target|
+    target.build_configurations.each do |config|
+      # Disable Bitcode for compatibility
+      config.build_settings['ENABLE_BITCODE'] = 'NO'
+      # Set minimum iOS deployment target to 14.0
+      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '14.0'
+    end
+  end
+end
+
+target 'Runner' do
+  use_frameworks!
+  use_modular_headers!
+
+  # Include Firebase dependencies
+  pod 'Firebase/Core'
+  pod 'Firebase/Firestore'
+end
+
+post_install do |installer|
+  flutter_install_all_pods(installer)
+
+  # Exclude arm64 for simulator builds
+  installer.pods_project.targets.each do |target|
+    target.build_configurations.each do |config|
+      config.build_settings['EXCLUDED_ARCHS[sdk=iphonesimulator*]'] = 'arm64'
+    end
+  end
+end

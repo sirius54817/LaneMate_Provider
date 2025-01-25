@@ -1,0 +1,19 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+      {
+        "label": "build",
+        "type": "shell",
+        "command": "cl",
+        "args": [
+          "/D_CRT_SECURE_NO_WARNINGS",
+          // Add other necessary compiler flags and source files here
+        ],
+        "group": {
+          "kind": "build",
+          "isDefault": true
+        },
+        "problemMatcher": ["$msCompile"]
+      }
+    ]
+  }
