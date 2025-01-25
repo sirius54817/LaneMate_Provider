@@ -314,17 +314,17 @@ class _MainNavigationState extends State<MainNavigation> {
                   InkWell(
                     onTap: () => _onItemTapped(0),
                     borderRadius: BorderRadius.circular(20),
-                    child: _buildNavItem(0, Icons.home_outlined, Icons.home, 'Home'),
+                    child: _buildNavItem(0, Icons.home_outlined, Icons.home, 'Journey'),
                   ),
                   InkWell(
                     onTap: () => _onItemTapped(1),
                     borderRadius: BorderRadius.circular(20),
-                    child: _buildNavItem(1, Icons.list_alt_outlined, Icons.list_alt, 'Orders'),
+                    child: _buildNavItem(1, Icons.list_alt_outlined, Icons.list_alt, 'Rides'),
                   ),
                   InkWell(
                     onTap: () => _onItemTapped(2),
                     borderRadius: BorderRadius.circular(20),
-                    child: _buildNavItem(2, Icons.account_balance_wallet_outlined, Icons.account_balance_wallet, 'Earnings'),
+                    child: _buildNavItem(2, Icons.account_balance_wallet_outlined, Icons.account_balance_wallet, 'Wallet'),
                   ),
                   InkWell(
                     onTap: () => _onItemTapped(3),

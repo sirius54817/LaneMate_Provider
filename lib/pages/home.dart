@@ -16,6 +16,11 @@ import 'package:location/location.dart';
 import 'package:flutter_polyline_points/flutter_polyline_points.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'package:flutter/services.dart';
+import 'package:google_places_flutter/google_places_flutter.dart';
+import 'package:google_places_flutter/model/prediction.dart';
+import 'dart:ui' as ui;
+import 'dart:math';
 
 final logger = Logger();
 
@@ -144,8 +149,16 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   bool _mapReady = false;
   final Location locationController = Location();
   
-  final TextEditingController _startLocationController = TextEditingController();
-  final TextEditingController _endLocationController = TextEditingController();
+  final TextEditingController _startSearchController = TextEditingController();
+  final TextEditingController _endSearchController = TextEditingController();
+  List<Prediction> _startPredictions = [];
+  List<Prediction> _endPredictions = [];
+  bool _showStartSuggestions = false;
+  bool _showEndSuggestions = false;
+  bool _routeReady = false;
+
+  // Add GoogleMapController
+  GoogleMapController? _mapController;
 
   @override
   void initState() {
@@ -154,132 +167,108 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       duration: const Duration(seconds: 2),
       vsync: this,
     )..repeat();
-    _fetchUserData();
-    _initializeMap();
+    _initializeMarkerIcons();
+    _initializeLocation();
   }
 
   @override
   void dispose() {
     _rotationController.dispose();
-    _startLocationController.dispose();
-    _endLocationController.dispose();
+    _startSearchController.dispose();
+    _endSearchController.dispose();
     super.dispose();
   }
 
-  Future<void> _fetchUserData() async {
+  Future<void> _initializeLocation() async {
     try {
-      print("Fetching user data...");
-      if (!mounted) return;
-
-      setState(() {
-        _loading = true;
-      });
-
-      // Get current user's email
-      final currentUser = FirebaseAuth.instance.currentUser;
-      if (currentUser == null || currentUser.email == null) {
-        throw 'No authenticated user found';
-      }
-
-      // Query Firestore for delivery agent data
-      final agentSnapshot = await FirebaseFirestore.instance
-          .collection('delivery_agent')
-          .where('email', isEqualTo: currentUser.email)
-          .get();
-
-      if (agentSnapshot.docs.isEmpty) {
-        throw 'No delivery agent found for this email';
-      }
-
-      // Get the first matching document
-      final agentData = agentSnapshot.docs.first.data();
-      
-      if (!mounted) return;
-
-      setState(() {
-        _user = {
-          'name': agentData['name'] ?? 'Unknown',
-          'photoURL': agentData['photoURL'],
-          'email': currentUser.email,
-          'salary': agentData['salary'] ?? 0,
-          'rides': agentData['rides'] ?? 0,
-        };
-        _loading = false;
-      });
-      
-      print("User data fetched successfully: ${_user.toString()}");
-    } catch (e) {
-      print("Error fetching user data: $e");
-      if (!mounted) return;
-
-      setState(() {
-        _loading = false;
-        _user = {
-          'name': 'Error loading data',
-          'salary': 0,
-          'rides': 0,
-        };
-      });
-
-      // Move SnackBar to the next frame to ensure Scaffold is built
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Failed to load user data: $e'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
-      });
-    }
-  }
-
-  Future<void> _refreshOrders() async {
-    if (_isRefreshing || !mounted) return;
-
-    setState(() {
-      _isRefreshing = true;
-    });
-
-    try {
-      await _fetchUserData();
-      
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Data refreshed'),
-            duration: Duration(seconds: 1),
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to refresh data'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } finally {
-      if (mounted) {
+      await fetchCurrentLocation();
+      if (currentPosition != null) {
+        final address = await getAddressFromLatLng(currentPosition!);
         setState(() {
-          _isRefreshing = false;
+          _startSearchController.text = address ?? 'Current Location';
+          _mapReady = true;
         });
       }
+    } catch (e) {
+      print('Error initializing location: $e');
+      setState(() {
+        _mapReady = true;  // Set map ready even if there's an error
+      });
     }
   }
 
-  Future<void> _initializeMap() async {
-    await fetchCurrentLocation();
-    setState(() {
-      _mapReady = true;
-      // Set initial start location to current location
-      if (currentPosition != null) {
-        _startLocationController.text = 'Current Location';
+  Future<String?> getAddressFromLatLng(LatLng position) async {
+    try {
+      final apiKey = 'AIzaSyDBRvts55sYzQ0hcPcF0qp6ApnwW-hHmYo';
+      final url = 'https://maps.googleapis.com/maps/api/geocode/json'
+          '?latlng=${position.latitude},${position.longitude}'
+          '&key=$apiKey';
+      
+      final response = await http.get(Uri.parse(url));
+      final data = json.decode(response.body);
+      
+      if (data['status'] == 'OK') {
+        return data['results'][0]['formatted_address'];
       }
-    });
+      return null;
+    } catch (e) {
+      print('Error getting address: $e');
+      return null;
+    }
+  }
+
+  Future<void> _searchPlaces(String query, bool isStart) async {
+    if (query.isEmpty) return;
+
+    try {
+      final apiKey = 'AIzaSyDBRvts55sYzQ0hcPcF0qp6ApnwW-hHmYo';
+      final url = 'https://maps.googleapis.com/maps/api/place/autocomplete/json'
+          '?input=$query'
+          '&key=$apiKey'
+          '&components=country:in';
+
+      final response = await http.get(Uri.parse(url));
+      final data = json.decode(response.body);
+
+      if (data['status'] == 'OK') {
+        final predictions = (data['predictions'] as List)
+            .map((p) => Prediction.fromJson(p))
+            .toList();
+
+        setState(() {
+          if (isStart) {
+            _startPredictions = predictions;
+            _showStartSuggestions = true;
+          } else {
+            _endPredictions = predictions;
+            _showEndSuggestions = true;
+          }
+        });
+      }
+    } catch (e) {
+      print('Error searching places: $e');
+    }
+  }
+
+  Future<void> _selectLocation(Prediction prediction, bool isStart) async {
+    final coords = await fetchCoordinatesFromPlaceName(prediction.description!);
+    if (coords != null) {
+      setState(() {
+        if (isStart) {
+          currentPosition = coords;
+          _startSearchController.text = prediction.description!;
+          _showStartSuggestions = false;
+        } else {
+          destinationPosition = coords;
+          _endSearchController.text = prediction.description!;
+          _showEndSuggestions = false;
+        }
+      });
+      
+      if (currentPosition != null && destinationPosition != null) {
+        await _updateRoute();
+      }
+    }
   }
 
   Future<void> fetchCurrentLocation() async {
@@ -302,14 +291,14 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   }
 
   Future<void> _updateRoute() async {
-    if (_startLocationController.text.isEmpty || _endLocationController.text.isEmpty) {
+    if (_startSearchController.text.isEmpty || _endSearchController.text.isEmpty) {
       return;
     }
 
     try {
       // Get coordinates for destination
-      if (_endLocationController.text != 'Current Location') {
-        final destCoords = await fetchCoordinatesFromPlaceName(_endLocationController.text);
+      if (_endSearchController.text != 'Current Location') {
+        final destCoords = await fetchCoordinatesFromPlaceName(_endSearchController.text);
         if (destCoords != null) {
           destinationPosition = destCoords;
         }
@@ -414,81 +403,120 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     }
   }
 
+  Future<void> _initializeMarkerIcons() async {
+    // Create custom arrow marker for current location
+    final currentLocIcon = await _createCustomMarkerBitmap(
+      Icons.navigation,
+      Colors.white,
+      Colors.blue[700] ?? Colors.blue,
+    );
+    
+    setState(() {
+      currentLocationIcon = currentLocIcon;
+      destinationIcon = BitmapDescriptor.defaultMarker;
+    });
+  }
+
+  Future<BitmapDescriptor> _createCustomMarkerBitmap(
+    IconData iconData,
+    Color iconColor,
+    Color backgroundColor,
+  ) async {
+    final pictureRecorder = ui.PictureRecorder();
+    final canvas = Canvas(pictureRecorder);
+    final size = 64.0;
+
+    // Draw white circle background with shadow
+    final shadowPaint = Paint()
+      ..color = Colors.black.withOpacity(0.1)
+      ..maskFilter = MaskFilter.blur(BlurStyle.normal, 3);
+    canvas.drawCircle(Offset(size/2, size/2 + 2), size/2 - 2, shadowPaint);
+
+    // Draw white circle background
+    final circlePaint = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.fill;
+    canvas.drawCircle(Offset(size/2, size/2), size/2 - 2, circlePaint);
+
+    // Draw colored border
+    final borderPaint = Paint()
+      ..color = backgroundColor
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3;
+    canvas.drawCircle(Offset(size/2, size/2), size/2 - 3, borderPaint);
+
+    // Draw the arrow icon
+    TextPainter textPainter = TextPainter(textDirection: TextDirection.ltr);
+    textPainter.text = TextSpan(
+      text: String.fromCharCode(iconData.codePoint),
+      style: TextStyle(
+        fontSize: 36,
+        fontFamily: iconData.fontFamily,
+        color: backgroundColor,
+        fontWeight: FontWeight.bold,
+      ),
+    );
+
+    textPainter.layout();
+    textPainter.paint(
+      canvas,
+      Offset(
+        (size - textPainter.width) / 2,
+        (size - textPainter.height) / 2,
+      ),
+    );
+
+    final picture = pictureRecorder.endRecording();
+    final image = await picture.toImage(size.toInt(), size.toInt());
+    final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+
+    return BitmapDescriptor.fromBytes(bytes!.buffer.asUint8List());
+  }
+
+  // Add this method to calculate bearing
+  double _getBearing(LatLng start, LatLng end) {
+    double lat1 = start.latitude * pi / 180;
+    double lon1 = start.longitude * pi / 180;
+    double lat2 = end.latitude * pi / 180;
+    double lon2 = end.longitude * pi / 180;
+
+    double dLon = lon2 - lon1;
+
+    double y = sin(dLon) * cos(lat2);
+    double x = cos(lat1) * sin(lat2) - sin(lat1) * cos(lat2) * cos(dLon);
+
+    double bearing = atan2(y, x);
+    bearing = bearing * 180 / pi;
+    bearing = (bearing + 360) % 360;
+
+    return bearing;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Colors.white,
-        toolbarHeight: 80,
         elevation: 0,
-        title: Row(
-          children: [
-            Text(
-              'ECUB Delivery',
-              style: TextStyle(
-                color: Colors.blue[900],
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            Text(
-              ' • ',
-              style: TextStyle(
-                color: Colors.blue[300],
-                fontSize: 22,
-              ),
-            ),
-            Text(
-              (_user?['name'] ?? 'Loading...').split(' ').take(2).join(' '),
-              style: TextStyle(
-                color: Colors.blue[700],
-                fontSize: 20,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          IconButton(
-            icon: _isRefreshing 
-              ? SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: CircularProgressIndicator(
-                    color: Colors.blue[700],
-                    strokeWidth: 2,
-                  ),
-                )
-              : Icon(Icons.refresh, color: Colors.blue[700]),
-            onPressed: _refreshOrders,
-            tooltip: 'Refresh Data',
+        title: Text(
+          'LaneMate Rider',
+          style: TextStyle(
+            color: Colors.blue[900],
+            fontSize: 22,
+            fontWeight: FontWeight.bold,
           ),
-        ],
+        ),
       ),
-      backgroundColor: Colors.white,
       body: Column(
         children: [
+          // Search inputs container
           Container(
-            padding: EdgeInsets.fromLTRB(16, 48, 16, 16),
+            padding: EdgeInsets.all(16),
             color: Colors.white,
             child: Column(
               children: [
-                Row(
-                  children: [
-                    Text(
-                      'ECUB Delivery',
-                      style: TextStyle(
-                        color: Colors.blue[900],
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
-                SizedBox(height: 16),
-                // Location input fields
                 TextField(
-                  controller: _startLocationController,
+                  controller: _startSearchController,
                   decoration: InputDecoration(
                     prefixIcon: Icon(Icons.location_on, color: Colors.blue),
                     hintText: 'Start Location',
@@ -496,63 +524,245 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                       borderRadius: BorderRadius.circular(12),
                     ),
                   ),
+                  onChanged: (value) => _searchPlaces(value, true),
                 ),
                 SizedBox(height: 8),
                 TextField(
-                  controller: _endLocationController,
+                  controller: _endSearchController,
                   decoration: InputDecoration(
                     prefixIcon: Icon(Icons.location_on, color: Colors.red),
-                    hintText: 'End Location',
+                    hintText: 'Destination',
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
                   ),
-                  onSubmitted: (_) => _updateRoute(),
+                  onChanged: (value) => _searchPlaces(value, false),
                 ),
                 if (eta != null && distance != null)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 8.0),
-                    child: Text(
-                      'ETA: $eta • Distance: $distance',
-                      style: TextStyle(
-                        color: Colors.blue[700],
-                        fontWeight: FontWeight.w500,
+                  Container(
+                    margin: EdgeInsets.only(top: 12),
+                    padding: EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.centerLeft,
+                        end: Alignment.centerRight,
+                        colors: [
+                          Colors.blue[50]!,
+                          Colors.blue[100]!.withOpacity(0.5),
+                        ],
                       ),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: Colors.blue[200]!,
+                        width: 1,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.blue[100]!.withOpacity(0.3),
+                          blurRadius: 4,
+                          offset: Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.access_time,
+                              color: Colors.blue[700],
+                              size: 20,
+                            ),
+                            SizedBox(width: 8),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Estimated Time',
+                                  style: TextStyle(
+                                    color: Colors.blue[700],
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                                Text(
+                                  eta!,
+                                  style: TextStyle(
+                                    color: Colors.blue[900],
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                        Container(
+                          height: 24,
+                          width: 1,
+                          color: Colors.blue[200],
+                        ),
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.directions_car,
+                              color: Colors.blue[700],
+                              size: 20,
+                            ),
+                            SizedBox(width: 8),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Distance',
+                                  style: TextStyle(
+                                    color: Colors.blue[700],
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                                Text(
+                                  distance!,
+                                  style: TextStyle(
+                                    color: Colors.blue[900],
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
                   ),
               ],
             ),
           ),
+          // Map container
           Expanded(
-            child: !_mapReady
-                ? Center(child: CircularProgressIndicator())
-                : GoogleMap(
-                    initialCameraPosition: CameraPosition(
-                      target: currentPosition ?? LatLng(20.5937, 78.9629), // India
-                      zoom: 15,
-                    ),
-                    markers: {
-                      if (currentPosition != null)
-                        Marker(
-                          markerId: MarkerId('start'),
-                          position: currentPosition!,
-                          icon: BitmapDescriptor.defaultMarkerWithHue(
-                            BitmapDescriptor.hueBlue,
-                          ),
-                        ),
-                      if (destinationPosition != null)
-                        Marker(
-                          markerId: MarkerId('end'),
-                          position: destinationPosition!,
-                          icon: BitmapDescriptor.defaultMarkerWithHue(
-                            BitmapDescriptor.hueRed,
-                          ),
-                        ),
-                    },
-                    polylines: Set<Polyline>.of(polylines.values),
-                    myLocationEnabled: true,
-                    myLocationButtonEnabled: true,
+            child: Stack(
+              children: [
+                GoogleMap(
+                  initialCameraPosition: CameraPosition(
+                    target: currentPosition ?? LatLng(20.5937, 78.9629),
+                    zoom: 15,
                   ),
+                  onMapCreated: (GoogleMapController controller) {
+                    _mapController = controller;
+                    if (currentPosition != null) {
+                      controller.animateCamera(
+                        CameraUpdate.newLatLngZoom(currentPosition!, 15),
+                      );
+                    }
+                  },
+                  markers: {
+                    if (currentPosition != null)
+                      Marker(
+                        markerId: MarkerId('start'),
+                        position: currentPosition!,
+                        icon: currentLocationIcon ?? BitmapDescriptor.defaultMarkerWithHue(
+                          BitmapDescriptor.hueBlue,
+                        ),
+                        rotation: 0,
+                        anchor: Offset(0.5, 0.5),
+                        flat: true,
+                      ),
+                    if (destinationPosition != null)
+                      Marker(
+                        markerId: MarkerId('end'),
+                        position: destinationPosition!,
+                        icon: BitmapDescriptor.defaultMarker,
+                      ),
+                  },
+                  polylines: Set<Polyline>.of(polylines.values),
+                  myLocationEnabled: true,
+                  myLocationButtonEnabled: true,
+                  zoomControlsEnabled: true,
+                  zoomGesturesEnabled: true,
+                  rotateGesturesEnabled: true,
+                  scrollGesturesEnabled: true,
+                  tiltGesturesEnabled: true,
+                  mapType: MapType.normal,
+                  minMaxZoomPreference: MinMaxZoomPreference(1, 20),
+                  buildingsEnabled: true,
+                  compassEnabled: true,
+                  trafficEnabled: false,
+                  mapToolbarEnabled: true,
+                  onCameraMove: (CameraPosition position) {
+                    // Optional: Handle camera movement
+                  },
+                  onCameraIdle: () {
+                    // Optional: Handle when camera stops moving
+                  },
+                ),
+                // Location suggestions overlays
+                if (_showStartSuggestions && _startPredictions.isNotEmpty)
+                  Positioned(
+                    top: 0,
+                    left: 16,
+                    right: 16,
+                    child: Card(
+                      child: ListView.builder(
+                        shrinkWrap: true,
+                        itemCount: _startPredictions.length,
+                        itemBuilder: (context, index) {
+                          return ListTile(
+                            title: Text(_startPredictions[index].description!),
+                            onTap: () => _selectLocation(_startPredictions[index], true),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                if (_showEndSuggestions && _endPredictions.isNotEmpty)
+                  Positioned(
+                    top: 0,
+                    left: 16,
+                    right: 16,
+                    child: Card(
+                      child: ListView.builder(
+                        shrinkWrap: true,
+                        itemCount: _endPredictions.length,
+                        itemBuilder: (context, index) {
+                          return ListTile(
+                            title: Text(_endPredictions[index].description!),
+                            onTap: () => _selectLocation(_endPredictions[index], false),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                // Start Journey button
+                if (currentPosition != null && destinationPosition != null)
+                  Positioned(
+                    bottom: 20,
+                    left: 20,
+                    right: 20,
+                    child: ElevatedButton(
+                      onPressed: () {
+                        print('Starting journey...');
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blue[700],
+                        padding: EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: Text(
+                        'Start Journey',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           ),
         ],
       ),
