@@ -37,14 +37,26 @@ dependencies:
   carousel_slider:
     git:
       url: https://github.com/serenader2014/flutter_carousel_slider.git
+  shared_preferences: ^2.2.2
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^4.0.0
   cloud_firestore: ^5.2.1
+  flutter_launcher_icons: ^0.13.1
+
+# flutter_launcher_icons:
+#   android: true
+#   ios: true
+#   image_path: "assets/logo.png"
+#   min_sdk_android: 23
+#   remove_alpha_ios: true
+#   adaptive_icon_background: "#FFFFFF"
+#   adaptive_icon_foreground: "assets/logo.png"
 
 flutter:
   uses-material-design: true
   assets:
     - assets/
+    - assets/images/

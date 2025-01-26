@@ -21,6 +21,7 @@ import 'package:google_places_flutter/google_places_flutter.dart';
 import 'package:google_places_flutter/model/prediction.dart';
 import 'dart:ui' as ui;
 import 'dart:math';
+import 'package:shared_preferences/shared_preferences.dart';
 
 final logger = Logger();
 
@@ -127,6 +128,11 @@ class OrdersSam {
   }
 }
 
+enum RideMode {
+  take,
+  give
+}
+
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -160,9 +166,12 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   // Add GoogleMapController
   GoogleMapController? _mapController;
 
+  RideMode _currentMode = RideMode.take;
+
   @override
   void initState() {
     super.initState();
+    _loadSavedMode();
     _rotationController = AnimationController(
       duration: const Duration(seconds: 2),
       vsync: this,
@@ -492,20 +501,191 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     return bearing;
   }
 
+  Future<void> _loadSavedMode() async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _currentMode = RideMode.values[prefs.getInt('ride_mode') ?? 0];
+    });
+  }
+
+  Future<void> _saveMode(RideMode mode) async {
+    if (mode == RideMode.give) {
+      // Check verification status before allowing give ride mode
+      final userId = FirebaseAuth.instance.currentUser?.uid;
+      if (userId == null) return;
+
+      try {
+        final verificationDoc = await FirebaseFirestore.instance
+            .collection('driver_verifications')
+            .doc(userId)
+            .get();
+
+        if (!verificationDoc.exists) {
+          _showVerificationAlert(
+            'Driver Verification Required',
+            'Please submit your documents in the profile page to start giving rides.',
+            'Go to Profile'
+          );
+          return;
+        }
+
+        final data = verificationDoc.data()!;
+        final submissionStatus = data['submissionStatus'] as String?;
+        final isLicenseValid = data['isLicenseValid'] as bool? ?? false;
+        final isPanValid = data['isPanValid'] as bool? ?? false;
+        final isOverallDataValid = data['isOverallDataValid'] as bool? ?? false;
+        final submittedAt = data['submittedAt'];
+
+        if (submissionStatus == 'pending' && submittedAt == null) {
+          _showVerificationAlert(
+            'Documents Not Submitted',
+            'Please submit your verification documents in the profile page to start giving rides.',
+            'Go to Profile'
+          );
+          return;
+        }
+
+        if (!isOverallDataValid) {
+          if (submissionStatus == 'pending' && submittedAt != null) {
+            _showVerificationAlert(
+              'Verification Pending',
+              'Your documents are under review. We\'ll notify you once verified.',
+              'OK'
+            );
+            return;
+          }
+
+          List<String> invalidDocs = [];
+          if (!isLicenseValid) invalidDocs.add('Driving License');
+          if (!isPanValid) invalidDocs.add('PAN Card');
+
+          if (invalidDocs.isEmpty) {
+            _showVerificationAlert(
+              'Verification Failed',
+              'None of your documents were accepted. Please resubmit in profile page.',
+              'Go to Profile'
+            );
+          } else {
+            _showVerificationAlert(
+              'Invalid Documents',
+              'The following documents were not accepted: ${invalidDocs.join(", ")}. Please resubmit in profile page.',
+              'Go to Profile'
+            );
+          }
+          return;
+        }
+      } catch (e) {
+        print('Error checking verification status: $e');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error checking verification status. Please try again.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+    }
+
+    // If all checks pass or if switching to take ride mode
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('ride_mode', mode.index);
+    setState(() {
+      _currentMode = mode;
+    });
+  }
+
+  void _showVerificationAlert(String title, String message, String buttonText) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(15),
+          ),
+          title: Text(
+            title,
+            style: TextStyle(
+              color: Colors.blue[900],
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          content: Text(
+            message,
+            style: TextStyle(
+              color: Colors.black87,
+              fontSize: 16,
+            ),
+          ),
+          actions: [
+            TextButton(
+              child: Text(
+                buttonText,
+                style: TextStyle(
+                  color: Colors.blue[700],
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
+              ),
+              onPressed: () {
+                Navigator.pop(context);
+                if (buttonText == 'Go to Profile') {
+                  Navigator.of(context).pushReplacement(
+                    MaterialPageRoute(
+                      builder: (context) => MainNavigation(initialIndex: 3),
+                    ),
+                  );
+                }
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
-        title: Text(
-          'LaneMate Rider',
-          style: TextStyle(
-            color: Colors.blue[900],
-            fontSize: 22,
-            fontWeight: FontWeight.bold,
-          ),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'LaneMate',
+              style: TextStyle(
+                color: Colors.blue[900],
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            Container(
+              margin: EdgeInsets.only(top: 8),
+              decoration: BoxDecoration(
+                color: Colors.blue[50],
+                borderRadius: BorderRadius.circular(25),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _buildModeButton(
+                    title: 'Take a Ride',
+                    mode: RideMode.take,
+                    icon: Icons.directions_car_filled,
+                  ),
+                  _buildModeButton(
+                    title: 'Give a Ride',
+                    mode: RideMode.give,
+                    icon: Icons.airline_seat_recline_normal,
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
+        toolbarHeight: 100,
       ),
       body: Column(
         children: [
@@ -765,6 +945,43 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildModeButton({
+    required String title,
+    required RideMode mode,
+    required IconData icon,
+  }) {
+    final isSelected = _currentMode == mode;
+    return GestureDetector(
+      onTap: () => _saveMode(mode),
+      child: Container(
+        padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? Colors.blue[700] : Colors.transparent,
+          borderRadius: BorderRadius.circular(25),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 18,
+              color: isSelected ? Colors.white : Colors.blue[700],
+            ),
+            SizedBox(width: 8),
+            Text(
+              title,
+              style: TextStyle(
+                color: isSelected ? Colors.white : Colors.blue[700],
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

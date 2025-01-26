@@ -93,9 +93,6 @@ class _SignupState extends State<Signup> {
         context: context,
         name: _nameController.text.trim(),
         phone: _phoneController.text.trim(),
-        role: '',
-        salary: 0,
-        rides: 0,
       );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(

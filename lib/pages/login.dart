@@ -5,6 +5,7 @@ import 'package:ecub_delivery/pages/signup.dart';
 import 'package:ecub_delivery/services/auth_service.dart';
 import 'package:ecub_delivery/pages/navigation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class Login extends StatefulWidget {
   const Login({Key? key}) : super(key: key);
@@ -237,32 +238,62 @@ class _LoginState extends State<Login> {
 
   void _performLogin() async {
     try {
-      final agentSnapshot = await FirebaseFirestore.instance
-          .collection('delivery_agent')
+      // Check if user exists in users collection
+      final userSnapshot = await FirebaseFirestore.instance
+          .collection('users')
           .where('email', isEqualTo: _emailController.text)
           .get();
 
-      if (agentSnapshot.docs.isEmpty) {
+      if (userSnapshot.docs.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Access denied: Not a registered delivery agent'),
+            content: Text('No account found with this email'),
             backgroundColor: Colors.red,
           ),
         );
         return;
       }
 
+      // Perform sign in
       await AuthService().signin(
         email: _emailController.text,
         password: _passwordController.text,
         context: context,
       );
 
+      // After successful login, check if user has completed driver verification
+      final userId = FirebaseAuth.instance.currentUser?.uid;
+      if (userId != null) {
+        final driverVerification = await FirebaseFirestore.instance
+            .collection('driver_verifications')
+            .doc(userId)
+            .get();
+
+        if (driverVerification.exists) {
+          final isVerified = driverVerification.data()?['isOverallDataValid'] ?? false;
+          if (!isVerified) {
+            // Show a message about pending verification if they've submitted docs
+            final hasSubmitted = driverVerification.data()?['submittedAt'] != null;
+            if (hasSubmitted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Your driver verification is pending approval'),
+                  backgroundColor: Colors.orange,
+                ),
+              );
+            }
+          }
+        }
+      }
+
+      // Navigate to main screen
+      if (!context.mounted) return;
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (context) => MainNavigation()),
       );
     } catch (e) {
+      if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Login failed: ${e.toString()}'),

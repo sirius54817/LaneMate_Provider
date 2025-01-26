@@ -10,18 +10,31 @@ class UserService {
       String uid = _auth.currentUser!.uid;
 
       DocumentSnapshot userDoc =
-          await _firestore.collection('delivery_agent').doc(uid).get();
+          await _firestore.collection('users').doc(uid).get();
 
       if (userDoc.exists) {
         Map<String, dynamic>? data = userDoc.data() as Map<String, dynamic>?;
 
         if (data != null) {
-          data['id'] = uid; // Add UID to data if you want to display it
+          DocumentSnapshot verificationDoc = 
+              await _firestore.collection('driver_verifications').doc(uid).get();
+          
+          if (verificationDoc.exists) {
+            Map<String, dynamic> verificationData = 
+                verificationDoc.data() as Map<String, dynamic>;
+            data['isVerified'] = verificationData['isOverallDataValid'] ?? false;
+            data['verificationStatus'] = verificationData['submissionStatus'];
+          } else {
+            data['isVerified'] = false;
+            data['verificationStatus'] = 'not_submitted';
+          }
+
+          data['id'] = uid;
         }
 
         return data;
       } else {
-        print("User data not found.");
+        print("User data not found in 'users' collection");
         return null;
       }
     } catch (e) {

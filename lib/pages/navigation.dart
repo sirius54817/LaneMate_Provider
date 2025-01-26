@@ -12,14 +12,15 @@ import 'package:logger/logger.dart';
 final logger = Logger();
 
 class MainNavigation extends StatefulWidget {
-  const MainNavigation({super.key});
+  final int initialIndex;
+  const MainNavigation({super.key, this.initialIndex = 0});
 
   @override
   State<MainNavigation> createState() => _MainNavigationState();
 }
 
 class _MainNavigationState extends State<MainNavigation> {
-  int _selectedIndex = 0;
+  late int _selectedIndex;
   Timer? _locationUpdateTimer;
   final Location _location = Location();
   bool _isUpdatingLocation = false;  // Add this flag
@@ -34,6 +35,7 @@ class _MainNavigationState extends State<MainNavigation> {
   @override
   void initState() {
     super.initState();
+    _selectedIndex = widget.initialIndex;
     _initializeLocation();
   }
 

@@ -11,11 +11,8 @@ class AuthService {
     required String name,
     required String email,
     required String phone,
-    required String role,
     required String password,
     required BuildContext context,
-    required int salary,
-    required int rides,
   }) async {
     try {
       UserCredential userCredential = await FirebaseAuth.instance
@@ -24,16 +21,29 @@ class AuthService {
       User? user = userCredential.user;
       if (user != null) {
         await FirebaseFirestore.instance
-            .collection('delivery_agent')
+            .collection('users')
             .doc(user.uid)
             .set({
           'id': user.uid,
           'name': name,
-          'role': 'delivery_agent',
           'email': email,
           'phone': phone,
-          'salary': salary,
-          'rides': rides,
+          'createdAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+
+        // Create initial driver verification document
+        await FirebaseFirestore.instance
+            .collection('driver_verifications')
+            .doc(user.uid)
+            .set({
+          'userId': user.uid,
+          'submissionStatus': 'pending',
+          'isLicenseValid': false,
+          'isPanValid': false,
+          'isOverallDataValid': false,
+          'createdAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
         });
       }
 
@@ -67,6 +77,39 @@ class AuthService {
         textColor: Colors.white,
         fontSize: 14.0,
       );
+    }
+  }
+
+  Future<void> submitDriverVerification({
+    required String userId,
+    required String fullName,
+    required String drivingLicenseNumber,
+    required String drivingLicensePicUrl,
+    required String panNumber,
+    required String panPicUrl,
+    required String carPlateNumber,
+    required String carPlatePicUrl,
+    required String userProfilePicUrl,
+  }) async {
+    try {
+      await FirebaseFirestore.instance
+          .collection('driver_verifications')
+          .doc(userId)
+          .update({
+        'fullName': fullName,
+        'drivingLicenseNumber': drivingLicenseNumber,
+        'drivingLicensePicUrl': drivingLicensePicUrl,
+        'panNumber': panNumber,
+        'panPicUrl': panPicUrl,
+        'carPlateNumber': carPlateNumber,
+        'carPlatePicUrl': carPlatePicUrl,
+        'userProfilePicUrl': userProfilePicUrl,
+        'submissionStatus': 'submitted',
+        'submittedAt': FieldValue.serverTimestamp(),
+        'lastUpdatedAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      throw 'Failed to submit driver verification: $e';
     }
   }
 
