@@ -1,9 +1,50 @@
 import 'package:ecub_delivery/pages/home.dart';
-import 'package:ecub_delivery/pages/init.dart';
 import 'package:flutter/material.dart';
 import 'package:ecub_delivery/services/orders_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:intl/intl.dart';
+import 'package:ecub_delivery/widgets/ride_map.dart';
+import 'package:ecub_delivery/services/location_service.dart';
+
+class RideOrder {
+  final String orderId;
+  final String userId;
+  final String pickup;
+  final String destination;
+  final double distance;
+  final int price;
+  final String status;
+  final GeoPoint? pickupLocation;
+  final GeoPoint? destinationLocation;
+
+  RideOrder({
+    required this.orderId,
+    required this.userId,
+    required this.pickup,
+    required this.destination,
+    required this.distance,
+    required this.price,
+    required this.status,
+    this.pickupLocation,
+    this.destinationLocation,
+  });
+
+  factory RideOrder.fromMap(Map<String, dynamic> map) {
+    return RideOrder(
+      orderId: map['docId'] ?? '',
+      userId: map['user_id'] ?? '',
+      pickup: map['pickup'] ?? '',
+      destination: map['destination'] ?? '',
+      distance: (map['distance'] ?? 0.0).toDouble(),
+      price: map['calculatedPrice'] ?? 0,
+      status: map['status'] ?? '',
+      pickupLocation: map['pickup_location'] as GeoPoint?,
+      destinationLocation: map['destination_location'] as GeoPoint?,
+    );
+  }
+}
 
 class OrdersPage extends StatefulWidget {
   const OrdersPage({super.key});
@@ -16,60 +57,82 @@ class _OrdersPageState extends State<OrdersPage> {
   List<Map<String, dynamic>> _orders = [];
   bool _isLoading = true;
   int _selectedIndex = 0;
+  bool _isGivingRide = false; // To track if user is in "Give a Ride" mode
+  final locationService = LocationService();
 
   @override
   void initState() {
     super.initState();
+    _checkRideMode();
     _fetchOrders();
+  }
+
+  Future<void> _checkRideMode() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _isGivingRide = prefs.getString('ride_mode') == 'give';
+    });
   }
 
   Future<void> _fetchOrders() async {
     try {
-      setState(() {
-        _isLoading = true;
-      });
+      setState(() => _isLoading = true);
 
       final currentUser = FirebaseAuth.instance.currentUser;
       if (currentUser == null) throw 'No authenticated user found';
 
-      String status;
+      String orderStatus;
       switch (_selectedIndex) {
-        case 0: // Available orders
-          status = 'pending';
+        case 0:
+          orderStatus = 'pending';
           break;
-        case 1: // Accepted orders
-          status = 'in_transit';
+        case 1:
+          orderStatus = 'in_transit';
           break;
-        case 2: // Completed orders
-          status = 'completed';
+        case 2:
+          orderStatus = 'completed';
           break;
         default:
-          status = 'pending';
+          orderStatus = 'pending';
       }
 
-      Query ordersQuery = FirebaseFirestore.instance.collection('orders');
+      Query ordersQuery = FirebaseFirestore.instance.collection('ride_orders');
       
-      // Add status filter
-      ordersQuery = ordersQuery.where('status', isEqualTo: status);
-      
-      // Add agent filter for accepted and completed orders
-      if (_selectedIndex != 0) {
-        ordersQuery = ordersQuery.where('del_agent', isEqualTo: currentUser.uid);
+      if (_isGivingRide) {
+        // For drivers, show their rides
+        ordersQuery = ordersQuery.where('rider_id', isEqualTo: currentUser.uid);
+      } else {
+        // For passengers, show their requested rides
+        ordersQuery = ordersQuery.where('user_id', isEqualTo: currentUser.uid);
       }
+      
+      ordersQuery = ordersQuery.where('status', isEqualTo: orderStatus);
 
       final QuerySnapshot ordersSnapshot = await ordersQuery.get();
-
-      List<Map<String, dynamic>> orders = ordersSnapshot.docs.map((doc) {
+      List<Map<String, dynamic>> orders = [];
+      
+      for (var doc in ordersSnapshot.docs) {
         Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
         data['docId'] = doc.id;
-        return data;
-      }).toList();
+        
+        // Calculate statistics for completed rides
+        if (orderStatus == 'completed') {
+          final startTime = (data['start_time'] as Timestamp?)?.toDate();
+          final endTime = (data['end_time'] as Timestamp?)?.toDate();
+          
+          if (startTime != null && endTime != null) {
+            final duration = endTime.difference(startTime);
+            data['duration'] = duration.inMinutes;
+          }
+        }
+        
+        orders.add(data);
+      }
 
       setState(() {
         _orders = orders;
         _isLoading = false;
       });
-
     } catch (e) {
       print('Error fetching orders: $e');
       if (mounted) {
@@ -82,6 +145,18 @@ class _OrdersPageState extends State<OrdersPage> {
         );
       }
     }
+  }
+
+  void _showRideDetails(Map<String, dynamic> order) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => RideDetailsSheet(
+        order: order,
+        isDriver: _isGivingRide,
+      ),
+    );
   }
 
   Widget _buildTabButton(int index, String label, IconData icon) {
@@ -217,80 +292,162 @@ class _OrdersPageState extends State<OrdersPage> {
                   itemCount: _orders.length,
                   itemBuilder: (context, index) {
                     final order = _orders[index];
-                    return Card(
-                      margin: EdgeInsets.only(bottom: 12),
-                      elevation: 2,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Container(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.centerLeft,
-                            end: Alignment.centerRight,
-                            colors: [
-                              Colors.white,
-                              Colors.blue[50]!.withOpacity(0.3),
-                            ],
-                          ),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: ListTile(
-                          contentPadding: EdgeInsets.all(16),
-                          leading: Container(
-                            padding: EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: Colors.green[50],
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Icon(
-                              order['isVeg'] == true ? Icons.eco : Icons.restaurant,
-                              color: Colors.green[700],
-                            ),
-                          ),
-                          title: Text(
-                            order['itemName'] ?? 'No Name',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: Colors.blue[900],
-                            ),
-                          ),
-                          subtitle: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              SizedBox(height: 4),
-                              Text('Price: ₹${order['itemPrice'] ?? 'N/A'}'),
-                              Text('Customer: ${order['userId'] ?? 'N/A'}'),
-                              Text('Address: ${order['address'] ?? 'N/A'}'),
-                            ],
-                          ),
-                          trailing: Icon(
-                            Icons.arrow_forward_ios,
-                            color: Colors.blue[700],
-                            size: 20,
-                          ),
-                          onTap: () {
-                            // Convert the order Map to OrdersSam object
-                            final orderObj = OrdersSam.fromMap(
-                              order,  // This is the Map<String, dynamic>
-                              isMedical: false  // Since this is food orders
-                            );
-                            
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => GoogleMapPage(
-                                  oder: orderObj,  // Pass the converted OrdersSam object
-                                  currentAgentId: FirebaseAuth.instance.currentUser?.uid ?? '',
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                    );
+                    return _buildOrderCard(order);
                   },
                 ),
+    );
+  }
+
+  Widget _buildOrderCard(Map<String, dynamic> order) {
+    final bool isCompleted = order['status'] == 'completed';
+    
+    return Card(
+      margin: EdgeInsets.only(bottom: 12),
+      elevation: 2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.centerLeft,
+            end: Alignment.centerRight,
+            colors: [
+              Colors.white,
+              Colors.blue[50]!.withOpacity(0.3),
+            ],
+          ),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: ListTile(
+          contentPadding: EdgeInsets.all(16),
+          leading: Container(
+            padding: EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Colors.blue[50],
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(
+              isCompleted ? Icons.check_circle : Icons.directions_bike,
+              color: Colors.blue[700],
+            ),
+          ),
+          title: Text(
+            'Ride to ${order['destination'] ?? 'Unknown'}',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              color: Colors.blue[900],
+            ),
+          ),
+          subtitle: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(height: 4),
+              if (_isGivingRide)
+                Text('Earnings: ₹${order['calculatedPrice']}')
+              else
+                Text('Cost: ₹${order['calculatedPrice']}'),
+              Text('Distance: ${order['distance']?.toStringAsFixed(1)} km'),
+              if (isCompleted && order['duration'] != null)
+                Text('Duration: ${order['duration']} mins'),
+            ],
+          ),
+          trailing: Icon(
+            Icons.arrow_forward_ios,
+            color: Colors.blue[700],
+            size: 20,
+          ),
+          onTap: () => _showRideDetails(order),
+        ),
+      ),
+    );
+  }
+}
+
+// New widget for ride details
+class RideDetailsSheet extends StatelessWidget {
+  final Map<String, dynamic> order;
+  final bool isDriver;
+
+  const RideDetailsSheet({
+    Key? key,
+    required this.order,
+    required this.isDriver,
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return DraggableScrollableSheet(
+      initialChildSize: 0.75,
+      minChildSize: 0.5,
+      maxChildSize: 0.95,
+      builder: (_, controller) => Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        padding: EdgeInsets.all(16),
+        child: Column(
+          children: [
+            Container(
+              height: 300,
+              child: RideMap(
+                startLocation: order['pickup_location'],
+                endLocation: order['destination_location'],
+              ),
+            ),
+            SizedBox(height: 16),
+            Text(
+              isDriver ? 'Ride Statistics' : 'Trip Details',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            SizedBox(height: 16),
+            _buildDetailRow('Distance', '${order['distance']?.toStringAsFixed(1)} km'),
+            _buildDetailRow(
+              isDriver ? 'Earnings' : 'Cost', 
+              '₹${order['calculatedPrice']}'
+            ),
+            if (order['duration'] != null)
+              _buildDetailRow('Duration', '${order['duration']} mins'),
+            _buildDetailRow('From', order['pickup'] ?? 'N/A'),
+            _buildDetailRow('To', order['destination'] ?? 'N/A'),
+            if (order['start_time'] != null)
+              _buildDetailRow(
+                'Start Time',
+                DateFormat('MMM d, h:mm a').format((order['start_time'] as Timestamp).toDate())
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDetailRow(String label, String value) {
+    return Padding(
+      padding: EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              color: Colors.grey[600],
+              fontSize: 16,
+            ),
+          ),
+          Text(
+            value,
+            style: TextStyle(
+              color: Colors.blue[900],
+              fontSize: 16,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

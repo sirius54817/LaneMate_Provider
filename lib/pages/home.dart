@@ -1,4 +1,3 @@
-import 'package:ecub_delivery/pages/init.dart';
 import 'package:ecub_delivery/pages/navigation.dart';
 import 'package:ecub_delivery/services/orders_service.dart';
 import 'package:flutter/material.dart';
@@ -22,6 +21,8 @@ import 'package:google_places_flutter/model/prediction.dart';
 import 'dart:ui' as ui;
 import 'dart:math';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:async';
+import 'package:url_launcher/url_launcher.dart';
 
 final logger = Logger();
 
@@ -168,6 +169,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
   RideMode _currentMode = RideMode.take;
 
+  Timer? _locationTimer;
+  final Location _location = Location();
+
   @override
   void initState() {
     super.initState();
@@ -178,6 +182,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     )..repeat();
     _initializeMarkerIcons();
     _initializeLocation();
+    _startLocationUpdates();
   }
 
   @override
@@ -185,6 +190,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     _rotationController.dispose();
     _startSearchController.dispose();
     _endSearchController.dispose();
+    _locationTimer?.cancel();
     super.dispose();
   }
 
@@ -770,6 +776,35 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
+  void _startLocationUpdates() {
+    _locationTimer?.cancel();
+    _locationTimer = Timer.periodic(Duration(seconds: 10), (timer) async {
+      await _updateLocation();
+    });
+  }
+
+  Future<void> _updateLocation() async {
+    try {
+      LocationData locationData = await _location.getLocation();
+      
+      final userId = FirebaseAuth.instance.currentUser?.uid;
+      if (userId == null) return;
+
+      await FirebaseFirestore.instance
+          .collection('riders')
+          .doc(userId)
+          .update({
+        'location': GeoPoint(
+          locationData.latitude!,
+          locationData.longitude!,
+        ),
+        'last_updated': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      print('Error updating location: $e');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1067,6 +1102,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                       ),
                     ),
                   ),
+                // SOS button
+                _buildSosButton(),
               ],
             ),
           ),
@@ -1108,6 +1145,47 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildSosButton() {
+    return Positioned(
+      top: 100,
+      right: 16,
+      child: FloatingActionButton(
+        backgroundColor: Colors.red,
+        child: Icon(Icons.emergency, color: Colors.white),
+        onPressed: () async {
+          try {
+            final Uri telUri = Uri(
+              scheme: 'tel',
+              path: '112',
+            );
+            
+            if (await canLaunchUrl(telUri)) {
+              await launchUrl(telUri, mode: LaunchMode.externalApplication);
+            } else {
+              // Fallback for when URL launcher fails
+              final phoneNumber = '112';
+              final fallbackUri = Uri.parse('tel:$phoneNumber');
+              if (await canLaunchUrl(fallbackUri)) {
+                await launchUrl(fallbackUri, mode: LaunchMode.externalApplication);
+              } else {
+                throw 'Could not launch emergency number';
+              }
+            }
+          } catch (e) {
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Error launching emergency call: $e'),
+                  backgroundColor: Colors.red,
+                ),
+              );
+            }
+          }
+        },
       ),
     );
   }

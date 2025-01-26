@@ -1,5 +1,4 @@
 import 'package:ecub_delivery/firebase_options.dart';
-import 'package:ecub_delivery/pages/init.dart';
 import 'package:ecub_delivery/pages/login.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';

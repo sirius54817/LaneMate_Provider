@@ -18,9 +18,9 @@ class LocationUpdateManager {
   Timer? _locationUpdateTimer;
   final Location _location = Location();
   bool _isUpdatingLocation = false;
-  OrdersSam? currentOrder;
+  RideOrder? currentOrder;
 
-  void startLocationUpdates(OrdersSam order) async {
+  void startLocationUpdates(RideOrder order) async {
     currentOrder = order;
     await _setupLocationUpdates();
   }
@@ -150,14 +150,14 @@ class LocationUpdateManager {
 }
 
 class GoogleMapPage extends StatefulWidget {
-  final OrdersSam oder;
+  final RideOrder rideOrder;
   final String currentAgentId;
-  
+
   const GoogleMapPage({
-    super.key, 
-    required this.oder,
+    Key? key,
+    required this.rideOrder,
     required this.currentAgentId,
-  });
+  }) : super(key: key);
 
   @override
   State<GoogleMapPage> createState() => _GoogleMapPageState();
@@ -200,7 +200,7 @@ class _GoogleMapPageState extends State<GoogleMapPage> {
       });
 
       // Start location updates with the current order
-      locationManager.startLocationUpdates(widget.oder);
+      locationManager.startLocationUpdates(widget.rideOrder);
     });
   }
 
@@ -312,21 +312,16 @@ class _GoogleMapPageState extends State<GoogleMapPage> {
   Future<void> storeETDInFirestore(String etd, String distance) async {
     try {
       final orderRef = FirebaseFirestore.instance
-          .collection('orders')
-          .doc(widget.oder.orderId);
-
-      final docSnapshot = await orderRef.get();
-      if (!docSnapshot.exists) {
-        throw 'Document with itemId ${widget.oder.orderId} does not exist';
-      }
+          .collection('ride_orders')
+          .doc(widget.rideOrder.orderId);
 
       await orderRef.update({
         'etd': etd,
         'distance': distance,
+        'last_updated': FieldValue.serverTimestamp(),
       });
-      debugPrint('ETD and distance stored in Firestore successfully');
     } catch (e) {
-      debugPrint('Error storing ETD and distance in Firestore: $e');
+      debugPrint('Error storing ETD in Firestore: $e');
     }
   }
 
@@ -337,159 +332,74 @@ class _GoogleMapPageState extends State<GoogleMapPage> {
 
   Future<void> updateOrderStatus(String status) async {
     try {
-      debugPrint('Updating order status to $status');
-
-      // Check assignment before proceeding
       if (status == 'in_transit') {
         final isAvailable = await _checkOrderAssignment();
         if (!isAvailable) return;
 
-        // Start location updates only after order is accepted
         if (_mapReady) {
-          locationManager.startLocationUpdates(widget.oder);
+          locationManager.startLocationUpdates(widget.rideOrder);
           setState(() {
             _orderAccepted = true;
           });
-        } else {
-          debugPrint('Map not ready yet, cannot start location updates');
-          return;
         }
       }
 
-      // For food orders, verify OTP before delivery
-      if (status == 'delivered') {
-        if (widget.oder.orderType == 'food') {
-          final confirmed = await _showDeliveryConfirmationDialog();
-          if (confirmed != true) return;
-        }
-        // Stop location updates when order is delivered
-        locationManager.stopLocationUpdates();
-      }
-
-      final currentUser = FirebaseAuth.instance.currentUser;
-      if (currentUser == null || currentUser.email == null) {
-        throw 'User is not logged in';
-      }
-
-      // Create a batch to perform multiple operations
       final batch = FirebaseFirestore.instance.batch();
-
-      // Reference to the order document based on order type
-      final DocumentReference orderRef;
-      final String orderType = widget.oder.orderType;
       
-      if (orderType == 'medical') {
-        // For medical orders
-        orderRef = FirebaseFirestore.instance
-            .collection('me_orders')
-            .doc(widget.oder.customerName)
-            .collection('orders')
-            .doc(widget.oder.orderId);
-      } else {
-        // For food orders (default)
-        orderRef = FirebaseFirestore.instance
-            .collection('orders')
-            .doc(widget.oder.orderId);
-      }
+      // Update ride_orders collection
+      final orderRef = FirebaseFirestore.instance
+          .collection('ride_orders')
+          .doc(widget.rideOrder.orderId);
 
-      // Check if the document exists
-      final docSnapshot = await orderRef.get();
-      if (!docSnapshot.exists) {
-        throw 'Document with itemId ${widget.oder.orderId} does not exist';
-      }
-
-      // Create the update data based on order type
-      Map<String, dynamic> orderUpdateData;
-      if (orderType == 'medical') {
-        orderUpdateData = {
-          'order_status': status,
-          'del_agent': currentUser.uid,
-        };
-      } else {
-        orderUpdateData = {
-          'status': status == 'delivered' ? 'completed' : status,
-          'del_agent': currentUser.uid,
-        };
-      }
-
-      // Add completion timestamp if needed
-      if (status == 'delivered') {
-        orderUpdateData['completed_at'] = FieldValue.serverTimestamp();
-      }
-
-      // Update the order status
-      batch.update(orderRef, orderUpdateData);
-
-      // Handle delivery agent updates (earnings, etc.)
-      if (status == 'delivered') {
-        await _handleDeliveryCompletion(batch, currentUser.email!);
-      }
-
-      // Commit all updates
-      await batch.commit();
-
-      // Update local state
-      setState(() {
-        widget.oder.status = status;
+      batch.update(orderRef, {
+        'status': status,
+        'rider_id': widget.currentAgentId,
+        'updated_at': FieldValue.serverTimestamp(),
       });
+
+      // If completed, add to earnings
+      if (status == 'completed') {
+        final earningsRef = FirebaseFirestore.instance
+            .collection('rider_earnings')
+            .doc(widget.currentAgentId)
+            .collection('earnings')
+            .doc();
+
+        batch.set(earningsRef, {
+          'ride_id': widget.rideOrder.orderId,
+          'amount': widget.rideOrder.price,
+          'distance': widget.rideOrder.distance,
+          'timestamp': FieldValue.serverTimestamp(),
+          'pickup': widget.rideOrder.pickup,
+          'destination': widget.rideOrder.destination,
+        });
+      }
+
+      await batch.commit();
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(status == 'delivered' 
-              ? 'Delivery completed successfully! Earnings updated.' 
-              : 'Order accepted'),
+            content: Text(
+              status == 'completed' 
+                ? 'Ride completed successfully!' 
+                : 'Ride status updated'
+            ),
             backgroundColor: Colors.green,
           ),
         );
       }
-
     } catch (e) {
       debugPrint('Error updating order status: $e');
-      // Stop location updates if there's an error
-      if (status == 'in_transit') {
-        locationManager.stopLocationUpdates();
-      }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to update order status: $e'),
+            content: Text('Error updating ride status: $e'),
             backgroundColor: Colors.red,
           ),
         );
       }
-      rethrow;
     }
-  }
-
-  Future<void> _handleDeliveryCompletion(WriteBatch batch, String agentEmail) async {
-    final agentQuery = await FirebaseFirestore.instance
-        .collection('delivery_agent')
-        .where('email', isEqualTo: agentEmail)
-        .get();
-
-    if (agentQuery.docs.isEmpty) {
-      throw 'Delivery agent not found';
-    }
-
-    final agentRef = agentQuery.docs.first.reference;
-    
-    // Create delivery history entry
-    Map<String, dynamic> deliveryEntry = {
-      'timestamp': FieldValue.serverTimestamp(),
-      'amount': 30,
-      'location': widget.oder.address,
-      'order_id': widget.oder.orderId,
-      'customer_name': widget.oder.customerName,
-      'order_type': widget.oder.orderType,
-    };
-
-    // Update agent's document
-    batch.update(agentRef, {
-      'salary': FieldValue.increment(30),
-      'rides': FieldValue.increment(1),
-      'delivery_history': FieldValue.arrayUnion([deliveryEntry]),
-    });
   }
 
   Future<void> updateSalaryAndRides() async {
@@ -520,7 +430,7 @@ class _GoogleMapPageState extends State<GoogleMapPage> {
         Map<String, dynamic> deliveryEntry = {
           'timestamp': FieldValue.serverTimestamp(),
           'amount': 30, // The amount earned for this delivery
-          'location': widget.oder.address, // The delivery location
+          'location': widget.rideOrder.address, // The delivery location
         };
 
         // Update the document with new salary, rides, and append to delivery history
@@ -550,18 +460,18 @@ class _GoogleMapPageState extends State<GoogleMapPage> {
       }
 
       // Check order type and update accordingly
-      if (widget.oder.orderType == 'medical') {
+      if (widget.rideOrder.orderType == 'medical') {
         // For medical orders
         try {
           final orderRef = FirebaseFirestore.instance
               .collection('me_orders')
-              .doc(widget.oder.customerName)  // Use customer name as doc ID
+              .doc(widget.rideOrder.customerName)  // Use customer name as doc ID
               .collection('orders')
-              .doc(widget.oder.orderId);  // Use actual order ID
+              .doc(widget.rideOrder.orderId);  // Use actual order ID
 
           final docSnapshot = await orderRef.get();
           if (!docSnapshot.exists) {
-            throw 'Medical order document does not exist: ${widget.oder.orderId}';
+            throw 'Medical order document does not exist: ${widget.rideOrder.orderId}';
           }
 
           await orderRef.update({
@@ -572,7 +482,7 @@ class _GoogleMapPageState extends State<GoogleMapPage> {
             'last_location_update': FieldValue.serverTimestamp(),
           });
 
-          debugPrint('Updated medical order location successfully: ${widget.oder.orderId}');
+          debugPrint('Updated medical order location successfully: ${widget.rideOrder.orderId}');
         } catch (e) {
           debugPrint('Error updating medical order location: $e');
         }
@@ -581,11 +491,11 @@ class _GoogleMapPageState extends State<GoogleMapPage> {
         try {
           final orderRef = FirebaseFirestore.instance
               .collection('orders')
-              .doc(widget.oder.orderId);
+              .doc(widget.rideOrder.orderId);
 
           final docSnapshot = await orderRef.get();
           if (!docSnapshot.exists) {
-            throw 'Food order document does not exist: ${widget.oder.orderId}';
+            throw 'Food order document does not exist: ${widget.rideOrder.orderId}';
           }
 
           await orderRef.update({
@@ -596,7 +506,7 @@ class _GoogleMapPageState extends State<GoogleMapPage> {
             'last_location_update': FieldValue.serverTimestamp(),
           });
 
-          debugPrint('Updated food order location successfully: ${widget.oder.orderId}');
+          debugPrint('Updated food order location successfully: ${widget.rideOrder.orderId}');
         } catch (e) {
           debugPrint('Error updating food order location: $e');
         }
@@ -622,8 +532,8 @@ class _GoogleMapPageState extends State<GoogleMapPage> {
               children: [
                 Text('Please confirm the delivery details:'),
                 SizedBox(height: 10),
-                Text('Customer: ${widget.oder.customerName}'),
-                Text('Address: ${widget.oder.address}'),
+                Text('Customer: ${widget.rideOrder.customerName}'),
+                Text('Address: ${widget.rideOrder.address}'),
                 if (distance != null) Text('Distance: $distance'),
                 SizedBox(height: 20),
                 Text(
@@ -682,7 +592,7 @@ class _GoogleMapPageState extends State<GoogleMapPage> {
                 try {
                   final orderDoc = await FirebaseFirestore.instance
                       .collection('orders')
-                      .doc(widget.oder.orderId)
+                      .doc(widget.rideOrder.orderId)
                       .get();
 
                   if (!orderDoc.exists) {
@@ -723,7 +633,7 @@ class _GoogleMapPageState extends State<GoogleMapPage> {
 
   Future<String?> _uploadDeliveryPhoto(XFile photo) async {
     try {
-      final path = 'delivery_photos/${widget.oder.orderId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final path = 'delivery_photos/${widget.rideOrder.orderId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
       final ref = FirebaseStorage.instance.ref().child(path);
       
       final file = File(photo.path);
@@ -739,153 +649,157 @@ class _GoogleMapPageState extends State<GoogleMapPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: !_mapReady 
-          ? Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  CircularProgressIndicator(),
-                  SizedBox(height: 16),
-                  Text('Loading map and route...'),
-                ],
-              ),
-            )
-          : Stack(
-              children: [
-                currentPosition == null || destinationPosition == null
-                    ? const Center(child: CircularProgressIndicator())
-                    : GoogleMap(
-                        initialCameraPosition: CameraPosition(
-                          target: currentPosition!,
-                          zoom: 13,
-                        ),
-                        markers: {
-                          Marker(
-                            markerId: const MarkerId('currentLocation'),
-                            icon: currentLocationIcon ??
-                                BitmapDescriptor.defaultMarker,
-                            position: currentPosition!,
-                          ),
-                          Marker(
-                            markerId: const MarkerId('destinationLocation'),
-                            icon: destinationIcon ?? BitmapDescriptor.defaultMarker,
-                            position: destinationPosition!,
-                          ),
-                        },
-                        polylines: Set<Polyline>.of(polylines.values),
-                      ),
-                Positioned(
-                  bottom: 0,
-                  left: 0,
-                  right: 0,
-                  child: Container(
-                    padding: const EdgeInsets.all(16.0),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black26,
-                          blurRadius: 10.0,
-                          offset: Offset(0, -2),
-                        ),
-                      ],
-                    ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Delivery Details',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text('Order ID: ${widget.oder.orderId}'),
-                        Text('Item Name: ${widget.oder.itemName}'),
-                        Text('Customer Name: ${widget.oder.customerName}'),
-                        Text('Item Price: ${widget.oder.itemPrice}'),
-                        Text('Address: ${widget.oder.address}'),
-                        if (eta != null) Text('Estimated Time: $eta'),
-                        if (distance != null) Text('Distance: $distance'),
-                        const SizedBox(height: 16),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                          children: [
-                            ElevatedButton(
-                              onPressed: () async {
-                                debugPrint('Accept button pressed');
-                                await updateOrderStatus('in_transit');
-                              },
-                              child: Text('Accept'),
+      appBar: AppBar(
+        title: Text('Ride Details'),
+      ),
+      body: Column(
+        children: [
+          !_mapReady 
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      CircularProgressIndicator(),
+                      SizedBox(height: 16),
+                      Text('Loading map and route...'),
+                    ],
+                  ),
+                )
+              : Stack(
+                  children: [
+                    currentPosition == null || destinationPosition == null
+                        ? const Center(child: CircularProgressIndicator())
+                        : GoogleMap(
+                            initialCameraPosition: CameraPosition(
+                              target: currentPosition!,
+                              zoom: 13,
                             ),
-                            ElevatedButton(
-                              onPressed: () async {
-                                debugPrint('Delivered button pressed');
-                                
-                                if (widget.oder.orderType == 'food') {
-                                  // Show OTP dialog for food orders
-                                  final confirmed = await _showDeliveryConfirmationDialog();
-                                  if (confirmed == true) {
-                                    try {
-                                      await updateOrderStatus('delivered');
-                                      Navigator.pushReplacement(
-                                        context,
-                                        MaterialPageRoute(builder: (context) => HomeScreen()),
-                                      );
-                                    } catch (e) {
-                                      debugPrint('Failed to complete delivery: $e');
-                                    }
-                                  }
-                                } else {
-                                  // For medical orders, directly update status
-                                  try {
-                                    await updateOrderStatus('delivered');
-                                    Navigator.pushReplacement(
-                                      context,
-                                      MaterialPageRoute(builder: (context) => HomeScreen()),
-                                    );
-                                  } catch (e) {
-                                    debugPrint('Failed to complete delivery: $e');
-                                  }
-                                }
-                              },
-                              child: Text('Delivered'),
-                            )
+                            markers: {
+                              Marker(
+                                markerId: const MarkerId('currentLocation'),
+                                icon: currentLocationIcon ??
+                                    BitmapDescriptor.defaultMarker,
+                                position: currentPosition!,
+                              ),
+                              Marker(
+                                markerId: const MarkerId('destinationLocation'),
+                                icon: destinationIcon ?? BitmapDescriptor.defaultMarker,
+                                position: destinationPosition!,
+                              ),
+                            },
+                            polylines: Set<Polyline>.of(polylines.values),
+                          ),
+                    Positioned(
+                      bottom: 0,
+                      left: 0,
+                      right: 0,
+                      child: Container(
+                        padding: const EdgeInsets.all(16.0),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black26,
+                              blurRadius: 10.0,
+                              offset: Offset(0, -2),
+                            ),
                           ],
                         ),
-                      ],
-                    ),
-                  ),
-                ),
-                if (_orderAccepted)
-                  Positioned(
-                    top: 16,
-                    left: 0,
-                    right: 0,
-                    child: Center(
-                      child: Container(
-                        padding: EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 8,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.green[100],
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Text(
-                          'Tracking location...',
-                          style: TextStyle(
-                            color: Colors.green[900],
-                            fontWeight: FontWeight.bold,
-                          ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Ride to ${widget.rideOrder.destination}',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text('Pickup: ${widget.rideOrder.pickup}'),
+                            Text('Distance: ${widget.rideOrder.distance.toStringAsFixed(1)} km'),
+                            Text('Price: ₹${widget.rideOrder.price}'),
+                            if (eta != null) Text('ETA: $eta'),
+                            const SizedBox(height: 16),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                              children: [
+                                ElevatedButton(
+                                  onPressed: () async {
+                                    debugPrint('Accept button pressed');
+                                    await updateOrderStatus('in_transit');
+                                  },
+                                  child: Text('Accept'),
+                                ),
+                                ElevatedButton(
+                                  onPressed: () async {
+                                    debugPrint('Delivered button pressed');
+                                    
+                                    if (widget.rideOrder.orderType == 'food') {
+                                      // Show OTP dialog for food orders
+                                      final confirmed = await _showDeliveryConfirmationDialog();
+                                      if (confirmed == true) {
+                                        try {
+                                          await updateOrderStatus('delivered');
+                                          Navigator.pushReplacement(
+                                            context,
+                                            MaterialPageRoute(builder: (context) => HomeScreen()),
+                                          );
+                                        } catch (e) {
+                                          debugPrint('Failed to complete delivery: $e');
+                                        }
+                                      }
+                                    } else {
+                                      // For medical orders, directly update status
+                                      try {
+                                        await updateOrderStatus('delivered');
+                                        Navigator.pushReplacement(
+                                          context,
+                                          MaterialPageRoute(builder: (context) => HomeScreen()),
+                                        );
+                                      } catch (e) {
+                                        debugPrint('Failed to complete delivery: $e');
+                                      }
+                                    }
+                                  },
+                                  child: Text('Delivered'),
+                                )
+                              ],
+                            ),
+                          ],
                         ),
                       ),
                     ),
-                  ),
-              ],
-            ),
+                    if (_orderAccepted)
+                      Positioned(
+                        top: 16,
+                        left: 0,
+                        right: 0,
+                        child: Center(
+                          child: Container(
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 8,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.green[100],
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Text(
+                              'Tracking location...',
+                              style: TextStyle(
+                                color: Colors.green[900],
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+        ],
+      ),
     );
   }
 
@@ -1027,16 +941,16 @@ class _GoogleMapPageState extends State<GoogleMapPage> {
       }
 
       final DocumentReference orderRef;
-      if (widget.oder.orderType == 'medical') {
+      if (widget.rideOrder.orderType == 'medical') {
         orderRef = FirebaseFirestore.instance
             .collection('me_orders')
-            .doc(widget.oder.customerName)
+            .doc(widget.rideOrder.customerName)
             .collection('orders')
-            .doc(widget.oder.orderId);
+            .doc(widget.rideOrder.orderId);
       } else {
         orderRef = FirebaseFirestore.instance
             .collection('orders')
-            .doc(widget.oder.orderId);
+            .doc(widget.rideOrder.orderId);
       }
 
       final docSnapshot = await orderRef.get();
@@ -1110,19 +1024,16 @@ class _GoogleMapPageState extends State<GoogleMapPage> {
 
   Future<void> fetchDestinationCoordinates() async {
     try {
-      if (widget.oder.address.isEmpty) {
-        debugPrint('Error: Empty address provided');
+      if (widget.rideOrder.destination.isEmpty) {
+        debugPrint('Error: Empty destination provided');
         return;
       }
 
-      final coordinates = await fetchCoordinatesFromPlaceName(widget.oder.address);
+      final coordinates = await fetchCoordinatesFromPlaceName(widget.rideOrder.destination);
       if (coordinates != null) {
         setState(() {
           destinationPosition = coordinates;
         });
-        debugPrint('Destination coordinates set: $coordinates');
-      } else {
-        debugPrint('Failed to get coordinates for address: ${widget.oder.address}');
       }
     } catch (e) {
       debugPrint('Error in fetchDestinationCoordinates: $e');
