@@ -76,7 +76,7 @@ class _EarningsPageState extends State<EarningsPage> {
             });
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text('Error loading delivery history: $error'),
+                content: Text('Error loading rides history: $error'),
                 backgroundColor: Colors.red,
               ),
             );
@@ -91,7 +91,7 @@ class _EarningsPageState extends State<EarningsPage> {
         });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to load delivery history: $e'),
+            content: Text('Failed to load rides history: $e'),
             backgroundColor: Colors.red,
           ),
         );
@@ -103,16 +103,16 @@ class _EarningsPageState extends State<EarningsPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: Colors.green[100],
         toolbarHeight: 80,
         elevation: 0,
         automaticallyImplyLeading: false,
         title: Row(
           children: [
             Text(
-              'ECUB Delivery',
+              'LaneMate',
               style: TextStyle(
-                color: Colors.blue[900],
+                color: Colors.green[900],
                 fontSize: 22,
                 fontWeight: FontWeight.bold,
               ),
@@ -120,14 +120,14 @@ class _EarningsPageState extends State<EarningsPage> {
             Text(
               ' • ',
               style: TextStyle(
-                color: Colors.blue[300],
+                color: Colors.green[300],
                 fontSize: 22,
               ),
             ),
             Text(
               'Earnings',
               style: TextStyle(
-                color: Colors.blue[700],
+                color: Colors.green[700],
                 fontSize: 20,
                 fontWeight: FontWeight.w500,
               ),
@@ -139,7 +139,7 @@ class _EarningsPageState extends State<EarningsPage> {
           IconButton(
             icon: Icon(
               Icons.refresh,
-              color: Colors.blue[700],
+              color: Colors.green[700],
             ),
             onPressed: () async {
               setState(() {
@@ -164,7 +164,7 @@ class _EarningsPageState extends State<EarningsPage> {
           SizedBox(width: 8),  // Add some padding
         ],
       ),
-      backgroundColor: Colors.white,
+      backgroundColor: Colors.green[100],
       body: _isLoading
           ? Center(child: CircularProgressIndicator(
               color: Colors.blue[700],
@@ -181,16 +181,16 @@ class _EarningsPageState extends State<EarningsPage> {
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                         colors: [
-                          Colors.blue[50]!,
-                          Colors.blue[100]!,
-                          Colors.blue[200]!.withOpacity(0.5),
+                          Color(0xFFAED581).withOpacity(0.3),
+                          Color(0xFFAED581).withOpacity(0.5),
+                          Color(0xFFAED581).withOpacity(0.7),
                         ],
                         stops: const [0.0, 0.6, 1.0],
                       ),
                       borderRadius: BorderRadius.circular(15),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.blue[200]!.withOpacity(0.3),
+                          color: Colors.green[200]!.withOpacity(0.3),
                           spreadRadius: 2,
                           blurRadius: 8,
                           offset: Offset(0, 2),
@@ -205,7 +205,7 @@ class _EarningsPageState extends State<EarningsPage> {
                           child: Icon(
                             Icons.account_balance_wallet,
                             size: 120,
-                            color: Colors.blue[200]!.withOpacity(0.3),
+                            color: Colors.green[600]!.withOpacity(0.3),
                           ),
                         ),
                         Column(
@@ -213,12 +213,12 @@ class _EarningsPageState extends State<EarningsPage> {
                           children: [
                             Row(
                               children: [
-                                Icon(Icons.payments, color: Colors.blue[700]),
+                                Icon(Icons.payments, color: Colors.green[700]),
                                 SizedBox(width: 8),
                                 Text(
                                   'Total Earnings',
                                   style: TextStyle(
-                                    color: Colors.blue[900],
+                                    color: Colors.green[900],
                                     fontSize: 20,
                                     fontWeight: FontWeight.bold,
                                   ),
@@ -231,7 +231,7 @@ class _EarningsPageState extends State<EarningsPage> {
                               style: TextStyle(
                                 fontSize: 32,
                                 fontWeight: FontWeight.bold,
-                                color: Colors.blue[900],
+                                color: Colors.green[900],
                               ),
                             ),
                           ],
@@ -240,7 +240,7 @@ class _EarningsPageState extends State<EarningsPage> {
                     ),
                   ),
                   SizedBox(height: 20),
-                  // Delivery History
+                  // rides history
                   Expanded(
                     child: Container(
                       padding: EdgeInsets.all(20),
@@ -267,12 +267,12 @@ class _EarningsPageState extends State<EarningsPage> {
                         children: [
                           Row(
                             children: [
-                              Icon(Icons.history, color: Colors.blue[700]),
+                              Icon(Icons.history, color: Colors.green[700]),
                               SizedBox(width: 8),
                               Text(
-                                'Delivery History',
+                                'Rides history',
                                 style: TextStyle(
-                                  color: Colors.blue[900],
+                                  color: Colors.green[900],
                                   fontSize: 20,
                                   fontWeight: FontWeight.bold,
                                 ),
@@ -289,13 +289,13 @@ class _EarningsPageState extends State<EarningsPage> {
                                         Icon(
                                           Icons.history,
                                           size: 64,
-                                          color: Colors.blue[200],
+                                          color: Colors.green[200],
                                         ),
                                         SizedBox(height: 16),
                                         Text(
-                                          'No delivery history yet',
+                                          'No rides history yet',
                                           style: TextStyle(
-                                            color: Colors.blue[900],
+                                            color: Colors.green[900],
                                             fontSize: 16,
                                           ),
                                         ),
@@ -338,7 +338,7 @@ class _EarningsPageState extends State<EarningsPage> {
             end: Alignment.centerRight,
             colors: [
               Colors.white,
-              Colors.blue[50]!.withOpacity(0.3),
+              Colors.green[50]!.withOpacity(0.3),
             ],
           ),
           borderRadius: BorderRadius.circular(12),
@@ -371,7 +371,7 @@ class _EarningsPageState extends State<EarningsPage> {
             ),
             child: Icon(
               orderType == 'medical' ? Icons.medical_services : Icons.delivery_dining,
-              color: orderType == 'medical' ? Colors.blue[700] : Colors.green[700],
+              color: orderType == 'medical' ? Colors.green[700] : Colors.green[700],
               size: 20,
             ),
           ),
@@ -379,7 +379,7 @@ class _EarningsPageState extends State<EarningsPage> {
             '₹${delivery['amount']}',
             style: TextStyle(
               fontWeight: FontWeight.bold,
-              color: Colors.blue[900],
+              color: Colors.green[900],
               fontSize: 18,
             ),
           ),

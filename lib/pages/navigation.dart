@@ -230,10 +230,10 @@ class _MainNavigationState extends State<MainNavigation> {
         vertical: 10,
       ),
       decoration: BoxDecoration(
-        color: isSelected ? Colors.blue[50] : Colors.transparent,
+        color: isSelected ? Color(0xFFAED581) : Colors.transparent,
         borderRadius: BorderRadius.circular(25),
         border: isSelected ? Border.all(
-          color: Colors.blue[200]!.withOpacity(0.5),
+          color: Color(0xFFAED581).withOpacity(0.5),
           width: 1,
         ) : null,
       ),
@@ -246,7 +246,7 @@ class _MainNavigationState extends State<MainNavigation> {
             curve: Curves.easeOutCubic,
             child: Icon(
               isSelected ? activeIcon : icon,
-              color: isSelected ? Colors.blue[700] : Colors.grey[600],
+              color: isSelected ? Colors.green[700] : Colors.grey[600],
               size: 24,
             ),
           ),
@@ -261,7 +261,7 @@ class _MainNavigationState extends State<MainNavigation> {
                     Text(
                       label,
                       style: TextStyle(
-                        color: Colors.blue[700],
+                        color: Colors.green[700],
                         fontWeight: FontWeight.w600,
                         fontSize: 14,
                       ),
@@ -298,7 +298,7 @@ class _MainNavigationState extends State<MainNavigation> {
             color: Colors.white,
             boxShadow: [
               BoxShadow(
-                color: Colors.blue.withOpacity(0.1),
+                color: Colors.green.withOpacity(0.1),
                 blurRadius: 10,
                 offset: Offset(0, -5),
               ),

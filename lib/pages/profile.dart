@@ -79,7 +79,7 @@ class ProfilePage extends StatelessWidget {
         title: Row(
           children: [
             Text(
-              'ECUB Delivery',
+              'LaneMate',
               style: TextStyle(
                 color: Colors.blue[900],
                 fontSize: 22,

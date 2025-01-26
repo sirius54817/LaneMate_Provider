@@ -147,7 +147,7 @@ class _OrdersPageState extends State<OrdersPage> {
         title: Row(
           children: [
             Text(
-              'ECUB Delivery',
+              'LaneMate',
               style: TextStyle(
                 color: Colors.blue[900],
                 fontSize: 22,
@@ -178,7 +178,7 @@ class _OrdersPageState extends State<OrdersPage> {
             child: Row(
               children: [
                 _buildTabButton(0, 'Available', Icons.local_shipping),
-                _buildTabButton(1, 'In Transit', Icons.delivery_dining),
+                _buildTabButton(1, 'Accepted', Icons.delivery_dining),
                 _buildTabButton(2, 'Completed', Icons.check_circle),
               ],
             ),
