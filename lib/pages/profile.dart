@@ -14,6 +14,7 @@ class ProfilePage extends StatefulWidget {
 class _ProfilePageState extends State<ProfilePage> {
   final UserService _userService = UserService();
   Future<Map<String, dynamic>?>? _userDataFuture;
+  bool _isUpdatingVerification = false;
 
   @override
   void initState() {
@@ -227,135 +228,149 @@ class _ProfilePageState extends State<ProfilePage> {
         Color bgStartColor = Colors.orange[50]!;
         Color bgEndColor = Colors.orange[100]!.withOpacity(0.5);
         IconData statusIcon = Icons.upload_file;
-        bool showSubmitButton = true;
+        bool isOverallDataValid = false;
 
         if (snapshot.hasData && snapshot.data != null) {
           final data = snapshot.data!;
           final submissionStatus = data['submissionStatus'] as String?;
           final isLicenseValid = data['isLicenseValid'] as bool? ?? false;
           final isPanValid = data['isPanValid'] as bool? ?? false;
-          final isOverallDataValid = data['isOverallDataValid'] as bool? ?? false;
+          isOverallDataValid = data['isOverallDataValid'] as bool? ?? false;
           final submittedAt = data['submittedAt'];
 
-          if (isOverallDataValid) {
+          // Check if any of the three validations are false
+          if (!isLicenseValid || !isPanValid || !isOverallDataValid) {
+            List<String> failedDocs = [];
+            if (!isLicenseValid && data['drivingLicenseNumber'] != null) {
+              failedDocs.add('Driving License');
+            }
+            if (!isPanValid && data['panNumber'] != null) {
+              failedDocs.add('PAN Card');
+            }
+
+            statusText = 'Not Verified';
+            if (failedDocs.isNotEmpty) {
+              statusText += '\nFailed documents: ${failedDocs.join(", ")}';
+            }
+            
+            statusColor = Colors.red;
+            bgStartColor = Colors.red[50]!;
+            bgEndColor = Colors.red[100]!.withOpacity(0.5);
+            statusIcon = Icons.gpp_bad;
+          } else if (isOverallDataValid) {
             statusText = 'Verified ✓';
             statusColor = const Color(0xFF33691E);
             bgStartColor = const Color(0xFFAED581);
             bgEndColor = const Color(0xFFAED581).withOpacity(0.5);
             statusIcon = Icons.verified_user;
-            showSubmitButton = false;
           } else if (submissionStatus == 'pending' && submittedAt != null) {
             statusText = 'Documents under review';
             statusColor = Colors.blue;
             bgStartColor = Colors.blue[50]!;
             bgEndColor = Colors.blue[100]!.withOpacity(0.5);
             statusIcon = Icons.pending;
-            showSubmitButton = false;
-          } else {
-            List<String> invalidDocs = [];
-            if (!isLicenseValid && data['drivingLicenseNumber'] != null) 
-              invalidDocs.add('Driving License');
-            if (!isPanValid && data['panNumber'] != null) 
-              invalidDocs.add('PAN Card');
-
-            if (invalidDocs.isNotEmpty) {
-              statusText = 'Invalid documents: ${invalidDocs.join(", ")}';
-              statusColor = Colors.red;
-              bgStartColor = Colors.red[50]!;
-              bgEndColor = Colors.red[100]!.withOpacity(0.5);
-              statusIcon = Icons.gpp_bad;
-            }
           }
         }
 
-        return Container(
-          margin: EdgeInsets.only(top: 20),
-          padding: EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                bgStartColor,
-                bgEndColor,
+        return InkWell(
+          onTap: () {
+            setState(() => _isUpdatingVerification = true);
+            _refreshData();
+            Future.delayed(Duration(milliseconds: 500), () {
+              if (mounted) {
+                setState(() => _isUpdatingVerification = false);
+              }
+            });
+          },
+          child: Container(
+            margin: EdgeInsets.only(top: 20),
+            padding: EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [bgStartColor, bgEndColor],
+              ),
+              borderRadius: BorderRadius.circular(15),
+              boxShadow: [
+                BoxShadow(
+                  color: statusColor.withOpacity(0.3),
+                  spreadRadius: 2,
+                  blurRadius: 8,
+                  offset: Offset(0, 2),
+                ),
               ],
             ),
-            borderRadius: BorderRadius.circular(15),
-            boxShadow: [
-              BoxShadow(
-                color: statusColor.withOpacity(0.3),
-                spreadRadius: 2,
-                blurRadius: 8,
-                offset: Offset(0, 2),
-              ),
-            ],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(statusIcon, color: statusColor, size: 28),
-                  SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Identity Verification',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: statusColor,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(statusIcon, color: statusColor, size: 28),
+                    SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Identity Verification',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: statusColor,
+                            ),
                           ),
-                        ),
-                        SizedBox(height: 4),
-                        Text(
-                          statusText,
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: statusColor,
-                            fontWeight: FontWeight.w500,
+                          SizedBox(height: 4),
+                          Text(
+                            statusText,
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: statusColor,
+                              fontWeight: FontWeight.w500,
+                            ),
                           ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                if (_isUpdatingVerification)
+                  Padding(
+                    padding: EdgeInsets.only(top: 12),
+                    child: LinearProgressIndicator(
+                      backgroundColor: statusColor.withOpacity(0.2),
+                      valueColor: AlwaysStoppedAnimation<Color>(statusColor),
+                    ),
+                  ),
+                if (!isOverallDataValid) ...[
+                  SizedBox(height: 16),
+                  ElevatedButton.icon(
+                    onPressed: () async {
+                      final result = await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => DocumentSubmissionPage(),
                         ),
-                      ],
+                      );
+                      if (result == true) {
+                        _refreshData();
+                      }
+                    },
+                    icon: Icon(Icons.upload_file, size: 20, color: Colors.white),
+                    label: Text('Submit Documents'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: statusColor,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      padding: EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
                     ),
                   ),
                 ],
-              ),
-              if (showSubmitButton) ...[
-                SizedBox(height: 15),
-                ElevatedButton(
-                  onPressed: () async {
-                    final result = await Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => DocumentSubmissionPage(),
-                      ),
-                    );
-                    if (result == true) {
-                      _refreshData();
-                    }
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: statusColor,
-                    foregroundColor: Colors.white,
-                    padding: EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.upload_file, color: Colors.white),
-                      SizedBox(width: 8),
-                      Text('Submit Documents'),
-                    ],
-                  ),
-                ),
               ],
-            ],
+            ),
           ),
         );
       },

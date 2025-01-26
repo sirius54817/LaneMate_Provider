@@ -508,13 +508,139 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     });
   }
 
+  Future<bool> _showWelcomeDialog() async {
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(15),
+          ),
+          title: Row(
+            children: [
+              Icon(Icons.emoji_emotions, color: Colors.blue[700], size: 28),
+              SizedBox(width: 10),
+              Text(
+                'Welcome!',
+                style: TextStyle(
+                  color: Colors.blue[900],
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Ready to start your journey as a ride provider?',
+                style: TextStyle(
+                  fontSize: 16,
+                  color: Colors.grey[800],
+                ),
+              ),
+              SizedBox(height: 12),
+              Text(
+                '• Earn money by giving rides\n• Choose your own schedule\n• Meet new people',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey[600],
+                  height: 1.5,
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context, false);
+              },
+              child: Text(
+                'Not Now',
+                style: TextStyle(
+                  color: Colors.grey[600],
+                  fontSize: 16,
+                ),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                try {
+                  final userId = FirebaseAuth.instance.currentUser?.uid;
+                  if (userId == null) {
+                    Navigator.pop(context, false);
+                    return;
+                  }
+
+                  await FirebaseFirestore.instance
+                      .collection('users')
+                      .doc(userId)
+                      .update({
+                    'isRideProvider': true,
+                    'updatedAt': FieldValue.serverTimestamp(),
+                  });
+
+                  if (!mounted) return;
+                  Navigator.pop(context, true);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Welcome aboard! You can now give rides.'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                } catch (e) {
+                  print('Error updating ride provider status: $e');
+                  Navigator.pop(context, false);
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue[700],
+                padding: EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              child: Text(
+                "Let's Go!",
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+
+    return result ?? false;
+  }
+
   Future<void> _saveMode(RideMode mode) async {
     if (mode == RideMode.give) {
-      // Check verification status before allowing give ride mode
       final userId = FirebaseAuth.instance.currentUser?.uid;
       if (userId == null) return;
 
       try {
+        final userDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(userId)
+            .get();
+        
+        final isRideProvider = userDoc.data()?['isRideProvider'] ?? false;
+        
+        if (!isRideProvider) {
+          final accepted = await _showWelcomeDialog();
+          if (!accepted) {
+            _currentMode = RideMode.take;
+            return;
+          }
+        }
+
         final verificationDoc = await FirebaseFirestore.instance
             .collection('driver_verifications')
             .doc(userId)
@@ -575,10 +701,10 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           return;
         }
       } catch (e) {
-        print('Error checking verification status: $e');
+        print('Error checking status: $e');
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error checking verification status. Please try again.'),
+            content: Text('Error checking status. Please try again.'),
             backgroundColor: Colors.red,
           ),
         );

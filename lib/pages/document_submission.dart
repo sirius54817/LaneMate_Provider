@@ -61,139 +61,121 @@ class _DocumentSubmissionPageState extends State<DocumentSubmissionPage> {
 
   Future<void> _submitDocuments() async {
     if (!_formKey.currentState!.validate()) return;
-    if (_licenseImage == null || _panImage == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Please upload both documents')),
-      );
-      return;
-    }
-
+    
     setState(() => _isLoading = true);
-
+    
     try {
       final userId = FirebaseAuth.instance.currentUser?.uid;
       if (userId == null) throw 'User not found';
 
-      // Upload images
-      final licenseUrl = await _uploadImage(
-        _licenseImage!,
-        'driver_documents/$userId/license.jpg'
-      );
-      final panUrl = await _uploadImage(
-        _panImage!,
-        'driver_documents/$userId/pan.jpg'
-      );
-
-      if (licenseUrl == null || panUrl == null) {
-        throw 'Failed to upload images';
+      if (_licenseImage == null || _panImage == null) {
+        throw 'Please upload both documents';
       }
 
-      // Update verification document
+      // Upload license image
+      final licenseRef = FirebaseStorage.instance
+          .ref()
+          .child('driver_documents/$userId/license.jpg');
+      await licenseRef.putFile(_licenseImage!);
+      final licenseUrl = await licenseRef.getDownloadURL();
+
+      // Upload PAN image
+      final panRef = FirebaseStorage.instance
+          .ref()
+          .child('driver_documents/$userId/pan.jpg');
+      await panRef.putFile(_panImage!);
+      final panUrl = await panRef.getDownloadURL();
+
+      // Update Firestore document
       await FirebaseFirestore.instance
           .collection('driver_verifications')
           .doc(userId)
           .update({
-        'drivingLicenseNumber': _licenseController.text,
+        'drivingLicenseNumber': _licenseController.text.trim(),
         'drivingLicensePicUrl': licenseUrl,
-        'panNumber': _panController.text,
+        'panNumber': _panController.text.trim(),
         'panPicUrl': panUrl,
         'submissionStatus': 'pending',
         'submittedAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
+        'isLicenseValid': false,
+        'isPanValid': false,
+        'isOverallDataValid': false,
       });
 
       if (!mounted) return;
+      
+      // Show success message
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Documents submitted successfully'),
+          backgroundColor: const Color(0xFF8CB73D),
+        ),
+      );
+      
       Navigator.pop(context, true); // Return true to indicate success
     } catch (e) {
+      if (!mounted) return;
+      
+      // Show error message
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error submitting documents: $e')),
+        SnackBar(
+          content: Text(
+            e is String ? e : 'Error submitting documents. Please try again.',
+          ),
+          backgroundColor: Colors.red,
+        ),
       );
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
-  }
-
-  Widget _buildImagePicker(String title, bool isLicense) {
-    final File? image = isLicense ? _licenseImage : _panImage;
-    
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          title,
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w500,
-            color: Colors.blue[900],
-          ),
-        ),
-        SizedBox(height: 8),
-        GestureDetector(
-          onTap: () => _pickImage(isLicense),
-          child: Container(
-            height: 200,
-            width: double.infinity,
-            decoration: BoxDecoration(
-              color: Colors.grey[100],
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: Colors.blue[200]!,
-                width: 1,
-              ),
-            ),
-            child: image != null
-                ? ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: Image.file(
-                      image,
-                      fit: BoxFit.cover,
-                    ),
-                  )
-                : Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.add_photo_alternate,
-                        size: 48,
-                        color: Colors.blue[300],
-                      ),
-                      SizedBox(height: 8),
-                      Text(
-                        'Tap to upload',
-                        style: TextStyle(
-                          color: Colors.blue[300],
-                          fontSize: 16,
-                        ),
-                      ),
-                    ],
-                  ),
-          ),
-        ),
-      ],
-    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final accentColor = const Color(0xFF8CB73D);
+    final darkAccentColor = const Color(0xFF8CB73D);  // Using same accent color
+
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
-        title: Text(
-          'Submit Documents',
-          style: TextStyle(
-            color: Colors.blue[900],
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-          ),
+        title: Row(
+          children: [
+            Text(
+              'LaneMate',
+              style: TextStyle(
+                color: darkAccentColor,
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            Text(
+              ' • ',
+              style: TextStyle(
+                color: accentColor,
+                fontSize: 22,
+              ),
+            ),
+            Text(
+              'Document Submission',
+              style: TextStyle(
+                color: darkAccentColor,
+                fontSize: 20,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
         ),
         leading: IconButton(
-          icon: Icon(Icons.arrow_back, color: Colors.blue[900]),
+          icon: Icon(Icons.arrow_back, color: darkAccentColor),
           onPressed: () => Navigator.pop(context),
         ),
       ),
       body: _isLoading
-          ? Center(child: CircularProgressIndicator())
+          ? Center(child: CircularProgressIndicator(color: darkAccentColor))
           : SingleChildScrollView(
               child: Padding(
                 padding: EdgeInsets.all(20),
@@ -202,56 +184,53 @@ class _DocumentSubmissionPageState extends State<DocumentSubmissionPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        'Please submit clear photos of your documents',
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: Colors.grey[600],
+                      Container(
+                        padding: EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: accentColor.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: accentColor),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.info_outline, 
+                                color: darkAccentColor, size: 24),
+                            SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                'Please submit clear photos of your documents for verification',
+                                style: TextStyle(
+                                  color: darkAccentColor,
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                       SizedBox(height: 24),
-                      TextFormField(
+                      _buildDocumentSection(
+                        title: 'Driving License',
                         controller: _licenseController,
-                        decoration: InputDecoration(
-                          labelText: 'Driving License Number',
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        validator: (value) {
-                          if (value?.isEmpty ?? true) {
-                            return 'Please enter license number';
-                          }
-                          return null;
-                        },
+                        isLicense: true,
+                        accentColor: accentColor,
+                        darkAccentColor: darkAccentColor,
                       ),
-                      SizedBox(height: 16),
-                      _buildImagePicker('Driving License Photo', true),
                       SizedBox(height: 24),
-                      TextFormField(
+                      _buildDocumentSection(
+                        title: 'PAN Card',
                         controller: _panController,
-                        decoration: InputDecoration(
-                          labelText: 'PAN Card Number',
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        validator: (value) {
-                          if (value?.isEmpty ?? true) {
-                            return 'Please enter PAN number';
-                          }
-                          return null;
-                        },
+                        isLicense: false,
+                        accentColor: accentColor,
+                        darkAccentColor: darkAccentColor,
                       ),
-                      SizedBox(height: 16),
-                      _buildImagePicker('PAN Card Photo', false),
-                      SizedBox(height: 24),
+                      SizedBox(height: 32),
                       SizedBox(
                         width: double.infinity,
                         child: ElevatedButton(
                           onPressed: _submitDocuments,
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.blue[700],
+                            backgroundColor: darkAccentColor,
                             padding: EdgeInsets.symmetric(vertical: 16),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
@@ -262,6 +241,7 @@ class _DocumentSubmissionPageState extends State<DocumentSubmissionPage> {
                             style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
+                              color: Colors.white,
                             ),
                           ),
                         ),
@@ -271,6 +251,98 @@ class _DocumentSubmissionPageState extends State<DocumentSubmissionPage> {
                 ),
               ),
             ),
+    );
+  }
+
+  Widget _buildDocumentSection({
+    required String title,
+    required TextEditingController controller,
+    required bool isLicense,
+    required Color accentColor,
+    required Color darkAccentColor,
+  }) {
+    final File? currentImage = isLicense ? _licenseImage : _panImage;
+    
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: darkAccentColor,
+          ),
+        ),
+        SizedBox(height: 12),
+        TextFormField(
+          controller: controller,
+          decoration: InputDecoration(
+            labelText: '$title Number',
+            prefixIcon: Icon(
+              isLicense ? Icons.drive_eta : Icons.credit_card,
+              color: darkAccentColor,
+            ),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: accentColor),
+            ),
+          ),
+          validator: (value) {
+            if (value?.isEmpty ?? true) {
+              return 'Please enter $title number';
+            }
+            return null;
+          },
+        ),
+        SizedBox(height: 12),
+        InkWell(
+          onTap: () => _pickImage(isLicense),
+          child: Container(
+            width: double.infinity,
+            padding: EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: accentColor.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: accentColor.withOpacity(0.5),
+                width: 1,
+              ),
+            ),
+            child: Column(
+              children: [
+                if (currentImage != null) ...[
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.file(
+                      currentImage,
+                      height: 150,
+                      width: double.infinity,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                  SizedBox(height: 12),
+                ] else
+                  Icon(
+                    Icons.add_photo_alternate_outlined,
+                    size: 48,
+                    color: accentColor,
+                  ),
+                Text(
+                  currentImage != null ? 'Tap to change photo' : 'Tap to upload photo',
+                  style: TextStyle(
+                    color: darkAccentColor,
+                    fontSize: 14,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 } 

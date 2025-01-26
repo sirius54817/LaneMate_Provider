@@ -28,6 +28,7 @@ class AuthService {
           'name': name,
           'email': email,
           'phone': phone,
+          'isRideProvider': false,
           'createdAt': FieldValue.serverTimestamp(),
           'updatedAt': FieldValue.serverTimestamp(),
         });
