@@ -107,7 +107,7 @@ class _ProfilePageState extends State<ProfilePage> {
       text: userData['phone'] ?? ''
     );
     final TextEditingController locationController = TextEditingController(
-      text: userData['location'] ?? ''
+      text: userData['userLocation'] ?? ''
     );
 
     return showDialog(
@@ -181,7 +181,7 @@ class _ProfilePageState extends State<ProfilePage> {
                       .doc(userId)
                       .update({
                     'phone': phoneController.text.trim(),
-                    'location': locationController.text.trim(),
+                    'userLocation': locationController.text.trim(),
                     'updatedAt': FieldValue.serverTimestamp(),
                   });
 
@@ -481,6 +481,8 @@ class _ProfilePageState extends State<ProfilePage> {
           }
 
           Map<String, dynamic> userData = snapshot.data!;
+          String displayLocation = userData['userLocation'] ?? 'Not set';
+
           return SingleChildScrollView(
             child: Padding(
               padding: const EdgeInsets.all(20.0),
@@ -607,10 +609,10 @@ class _ProfilePageState extends State<ProfilePage> {
                           isEditable: false,
                         ),
                         Divider(color: Colors.blue[100]),
-                        ProfileItem(
-                          icon: Icons.location_on,
-                          label: "Location",
-                          value: userData['location'] ?? 'Not available',
+                        ListTile(
+                          leading: Icon(Icons.location_on),
+                          title: Text('Location'),
+                          subtitle: Text(displayLocation),
                         ),
                         SizedBox(height: 20),
                         ElevatedButton(
@@ -718,5 +720,24 @@ class ProfileItem extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+Future<Map<String, dynamic>?> _fetchUserData() async {
+  try {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return null;
+
+    final doc = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .get();
+
+    if (!doc.exists) return null;
+
+    return doc.data();
+  } catch (e) {
+    print('Error fetching user data: $e');
+    return null;
   }
 }

@@ -172,6 +172,13 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   Timer? _locationTimer;
   final Location _location = Location();
 
+  // Add focus nodes for text fields
+  final FocusNode _startFocusNode = FocusNode();
+  final FocusNode _endFocusNode = FocusNode();
+
+  // Add a property to track if suggestions are showing
+  bool get isSuggestionsVisible => _showStartSuggestions || _showEndSuggestions;
+
   @override
   void initState() {
     super.initState();
@@ -183,6 +190,10 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     _initializeMarkerIcons();
     _initializeLocation();
     _startLocationUpdates();
+
+    // Add listeners to focus nodes
+    _startFocusNode.addListener(_onStartFocusChange);
+    _endFocusNode.addListener(_onEndFocusChange);
   }
 
   @override
@@ -191,7 +202,27 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     _startSearchController.dispose();
     _endSearchController.dispose();
     _locationTimer?.cancel();
+    _startFocusNode.removeListener(_onStartFocusChange);
+    _endFocusNode.removeListener(_onEndFocusChange);
+    _startFocusNode.dispose();
+    _endFocusNode.dispose();
     super.dispose();
+  }
+
+  void _onStartFocusChange() {
+    if (!_startFocusNode.hasFocus) {
+      setState(() {
+        _showStartSuggestions = false;
+      });
+    }
+  }
+
+  void _onEndFocusChange() {
+    if (!_endFocusNode.hasFocus) {
+      setState(() {
+        _showEndSuggestions = false;
+      });
+    }
   }
 
   Future<void> _initializeLocation() async {
@@ -233,7 +264,19 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   }
 
   Future<void> _searchPlaces(String query, bool isStart) async {
-    if (query.isEmpty) return;
+    // Clear suggestions if query is empty
+    if (query.isEmpty) {
+      setState(() {
+        if (isStart) {
+          _startPredictions = [];
+          _showStartSuggestions = false;
+        } else {
+          _endPredictions = [];
+          _showEndSuggestions = false;
+        }
+      });
+      return;
+    }
 
     try {
       final apiKey = 'AIzaSyDBRvts55sYzQ0hcPcF0qp6ApnwW-hHmYo';
@@ -253,10 +296,12 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         setState(() {
           if (isStart) {
             _startPredictions = predictions;
-            _showStartSuggestions = true;
+            _showStartSuggestions = predictions.isNotEmpty;
+            _showEndSuggestions = false;  // Hide end suggestions
           } else {
             _endPredictions = predictions;
-            _showEndSuggestions = true;
+            _showEndSuggestions = predictions.isNotEmpty;
+            _showStartSuggestions = false;  // Hide start suggestions
           }
         });
       }
@@ -266,17 +311,26 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   }
 
   Future<void> _selectLocation(Prediction prediction, bool isStart) async {
+    // Dismiss suggestions immediately
+    setState(() {
+      if (isStart) {
+        _showStartSuggestions = false;
+        _startSearchController.text = prediction.description ?? '';
+      } else {
+        _showEndSuggestions = false;
+        _endSearchController.text = prediction.description ?? '';
+      }
+    });
+
     final coords = await fetchCoordinatesFromPlaceName(prediction.description!);
     if (coords != null) {
       setState(() {
         if (isStart) {
           currentPosition = coords;
           _startSearchController.text = prediction.description!;
-          _showStartSuggestions = false;
         } else {
           destinationPosition = coords;
           _endSearchController.text = prediction.description!;
-          _showEndSuggestions = false;
         }
       });
       
@@ -791,7 +845,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       if (userId == null) return;
 
       await FirebaseFirestore.instance
-          .collection('riders')
+          .collection('users')
           .doc(userId)
           .update({
         'location': GeoPoint(
@@ -807,307 +861,262 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'LaneMate',
-              style: TextStyle(
-                color: Colors.blue[900],
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            Container(
-              margin: EdgeInsets.only(top: 8),
-              decoration: BoxDecoration(
-                color: Colors.blue[50],
-                borderRadius: BorderRadius.circular(25),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _buildModeButton(
-                    title: 'Take a Ride',
-                    mode: RideMode.take,
-                    icon: Icons.directions_car_filled,
-                  ),
-                  _buildModeButton(
-                    title: 'Give a Ride',
-                    mode: RideMode.give,
-                    icon: Icons.airline_seat_recline_normal,
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-        toolbarHeight: 100,
-      ),
-      body: Column(
-        children: [
-          // Search inputs container
-          Container(
-            padding: EdgeInsets.all(16),
-            color: Colors.white,
-            child: Column(
+    return WillPopScope(  // Add WillPopScope to handle back button
+      onWillPop: () async {
+        if (isSuggestionsVisible) {
+          setState(() {
+            _showStartSuggestions = false;
+            _showEndSuggestions = false;
+          });
+          return false;  // Don't close the app
+        }
+        return true;  // Allow app to close
+      },
+      child: GestureDetector(
+        onTap: () {
+          // Dismiss keyboard and suggestions when tapping outside
+          FocusScope.of(context).unfocus();
+          setState(() {
+            _showStartSuggestions = false;
+            _showEndSuggestions = false;
+          });
+        },
+        child: Scaffold(
+          appBar: AppBar(
+            backgroundColor: Colors.white,
+            elevation: 0,
+            title: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                TextField(
-                  controller: _startSearchController,
-                  decoration: InputDecoration(
-                    prefixIcon: Icon(Icons.location_on, color: Colors.blue),
-                    hintText: 'Start Location',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+                Text(
+                  'LaneMate',
+                  style: TextStyle(
+                    color: Colors.blue[900],
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
                   ),
-                  onChanged: (value) => _searchPlaces(value, true),
                 ),
-                SizedBox(height: 8),
-                TextField(
-                  controller: _endSearchController,
-                  decoration: InputDecoration(
-                    prefixIcon: Icon(Icons.location_on, color: Colors.red),
-                    hintText: 'Destination',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+                Container(
+                  margin: EdgeInsets.only(top: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.blue[50],
+                    borderRadius: BorderRadius.circular(25),
                   ),
-                  onChanged: (value) => _searchPlaces(value, false),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _buildModeButton(
+                        title: 'Take a Ride',
+                        mode: RideMode.take,
+                        icon: Icons.directions_car_filled,
+                      ),
+                      _buildModeButton(
+                        title: 'Give a Ride',
+                        mode: RideMode.give,
+                        icon: Icons.airline_seat_recline_normal,
+                      ),
+                    ],
+                  ),
                 ),
-                if (eta != null && distance != null)
-                  Container(
-                    margin: EdgeInsets.only(top: 12),
-                    padding: EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.centerLeft,
-                        end: Alignment.centerRight,
-                        colors: [
-                          Colors.blue[50]!,
-                          Colors.blue[100]!.withOpacity(0.5),
-                        ],
-                      ),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: Colors.blue[200]!,
-                        width: 1,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.blue[100]!.withOpacity(0.3),
-                          blurRadius: 4,
-                          offset: Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: [
-                        Row(
-                          children: [
-                            Icon(
-                              Icons.access_time,
-                              color: Colors.blue[700],
-                              size: 20,
-                            ),
-                            SizedBox(width: 8),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Estimated Time',
-                                  style: TextStyle(
-                                    color: Colors.blue[700],
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                                Text(
-                                  eta!,
-                                  style: TextStyle(
-                                    color: Colors.blue[900],
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                        Container(
-                          height: 24,
-                          width: 1,
-                          color: Colors.blue[200],
-                        ),
-                        Row(
-                          children: [
-                            Icon(
-                              Icons.directions_car,
-                              color: Colors.blue[700],
-                              size: 20,
-                            ),
-                            SizedBox(width: 8),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Distance',
-                                  style: TextStyle(
-                                    color: Colors.blue[700],
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                                Text(
-                                  distance!,
-                                  style: TextStyle(
-                                    color: Colors.blue[900],
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
               ],
             ),
+            toolbarHeight: 100,
           ),
-          // Map container
-          Expanded(
-            child: Stack(
-              children: [
-                GoogleMap(
-                  initialCameraPosition: CameraPosition(
-                    target: currentPosition ?? LatLng(20.5937, 78.9629),
-                    zoom: 15,
+          body: Column(
+            children: [
+              // Search inputs container
+              Container(
+                padding: EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.vertical(
+                    bottom: Radius.circular(20),
                   ),
-                  onMapCreated: (GoogleMapController controller) {
-                    _mapController = controller;
-                    if (currentPosition != null) {
-                      controller.animateCamera(
-                        CameraUpdate.newLatLngZoom(currentPosition!, 15),
-                      );
-                    }
-                  },
-                  markers: {
-                    if (currentPosition != null)
-                      Marker(
-                        markerId: MarkerId('start'),
-                        position: currentPosition!,
-                        icon: currentLocationIcon ?? BitmapDescriptor.defaultMarkerWithHue(
-                          BitmapDescriptor.hueBlue,
-                        ),
-                        rotation: 0,
-                        anchor: Offset(0.5, 0.5),
-                        flat: true,
-                      ),
-                    if (destinationPosition != null)
-                      Marker(
-                        markerId: MarkerId('end'),
-                        position: destinationPosition!,
-                        icon: BitmapDescriptor.defaultMarker,
-                      ),
-                  },
-                  polylines: Set<Polyline>.of(polylines.values),
-                  myLocationEnabled: true,
-                  myLocationButtonEnabled: true,
-                  zoomControlsEnabled: true,
-                  zoomGesturesEnabled: true,
-                  rotateGesturesEnabled: true,
-                  scrollGesturesEnabled: true,
-                  tiltGesturesEnabled: true,
-                  mapType: MapType.normal,
-                  minMaxZoomPreference: MinMaxZoomPreference(1, 20),
-                  buildingsEnabled: true,
-                  compassEnabled: true,
-                  trafficEnabled: false,
-                  mapToolbarEnabled: true,
-                  onCameraMove: (CameraPosition position) {
-                    // Optional: Handle camera movement
-                  },
-                  onCameraIdle: () {
-                    // Optional: Handle when camera stops moving
-                  },
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.05),
+                      blurRadius: 10,
+                      offset: Offset(0, 5),
+                    ),
+                  ],
                 ),
-                // Location suggestions overlays
-                if (_showStartSuggestions && _startPredictions.isNotEmpty)
-                  Positioned(
-                    top: 0,
-                    left: 16,
-                    right: 16,
-                    child: Card(
-                      child: ListView.builder(
-                        shrinkWrap: true,
-                        itemCount: _startPredictions.length,
-                        itemBuilder: (context, index) {
-                          return ListTile(
-                            title: Text(_startPredictions[index].description!),
-                            onTap: () => _selectLocation(_startPredictions[index], true),
-                          );
-                        },
+                child: Column(
+                  children: [
+                    // Start Location TextField
+                    Container(
+                      decoration: BoxDecoration(
+                        color: Colors.grey[50],
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                      ),
+                      child: TextField(
+                        controller: _startSearchController,
+                        focusNode: _startFocusNode,
+                        decoration: InputDecoration(
+                          prefixIcon: Icon(Icons.my_location, color: Colors.blue[700]),
+                          hintText: 'Start Location',
+                          hintStyle: TextStyle(color: Colors.grey[400]),
+                          border: InputBorder.none,
+                          contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                        ),
+                        onChanged: (value) => _searchPlaces(value, true),
                       ),
                     ),
-                  ),
-                if (_showEndSuggestions && _endPredictions.isNotEmpty)
-                  Positioned(
-                    top: 0,
-                    left: 16,
-                    right: 16,
-                    child: Card(
-                      child: ListView.builder(
-                        shrinkWrap: true,
-                        itemCount: _endPredictions.length,
-                        itemBuilder: (context, index) {
-                          return ListTile(
-                            title: Text(_endPredictions[index].description!),
-                            onTap: () => _selectLocation(_endPredictions[index], false),
-                          );
-                        },
+                    
+                    SizedBox(height: 12),
+                    
+                    // Destination TextField
+                    Container(
+                      decoration: BoxDecoration(
+                        color: Colors.grey[50],
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                      ),
+                      child: TextField(
+                        controller: _endSearchController,
+                        focusNode: _endFocusNode,
+                        decoration: InputDecoration(
+                          prefixIcon: Icon(Icons.location_on, color: Colors.red[700]),
+                          hintText: 'Where to?',
+                          hintStyle: TextStyle(color: Colors.grey[400]),
+                          border: InputBorder.none,
+                          contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                        ),
+                        onChanged: (value) => _searchPlaces(value, false),
                       ),
                     ),
-                  ),
-                // Start Journey button
-                if (currentPosition != null && destinationPosition != null)
-                  Positioned(
-                    bottom: 20,
-                    left: 20,
-                    right: 20,
-                    child: ElevatedButton(
-                      onPressed: () {
-                        print('Starting journey...');
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blue[700],
-                        padding: EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
+
+                    // Show ETA and distance if available
+                    if (eta != null && distance != null)
+                      Container(
+                        margin: EdgeInsets.only(top: 16),
+                        padding: EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [Colors.blue[50]!, Colors.blue[100]!],
+                            begin: Alignment.centerLeft,
+                            end: Alignment.centerRight,
+                          ),
                           borderRadius: BorderRadius.circular(12),
                         ),
-                      ),
-                      child: Text(
-                        'Start Journey',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceAround,
+                          children: [
+                            _buildInfoItem(Icons.timer, eta!),
+                            Container(height: 24, width: 1, color: Colors.blue[200]),
+                            _buildInfoItem(Icons.directions_car, distance!),
+                          ],
                         ),
                       ),
+                  ],
+                ),
+              ),
+              // Map container
+              Expanded(
+                child: Stack(
+                  children: [
+                    GoogleMap(
+                      initialCameraPosition: CameraPosition(
+                        target: currentPosition ?? LatLng(20.5937, 78.9629),
+                        zoom: 15,
+                      ),
+                      onMapCreated: (GoogleMapController controller) {
+                        _mapController = controller;
+                        if (currentPosition != null) {
+                          controller.animateCamera(
+                            CameraUpdate.newLatLngZoom(currentPosition!, 15),
+                          );
+                        }
+                      },
+                      markers: {
+                        if (currentPosition != null)
+                          Marker(
+                            markerId: MarkerId('start'),
+                            position: currentPosition!,
+                            icon: currentLocationIcon ?? BitmapDescriptor.defaultMarkerWithHue(
+                              BitmapDescriptor.hueBlue,
+                            ),
+                            rotation: 0,
+                            anchor: Offset(0.5, 0.5),
+                            flat: true,
+                          ),
+                        if (destinationPosition != null)
+                          Marker(
+                            markerId: MarkerId('end'),
+                            position: destinationPosition!,
+                            icon: BitmapDescriptor.defaultMarker,
+                          ),
+                      },
+                      polylines: Set<Polyline>.of(polylines.values),
+                      myLocationEnabled: true,
+                      myLocationButtonEnabled: true,
+                      zoomControlsEnabled: true,
+                      zoomGesturesEnabled: true,
+                      rotateGesturesEnabled: true,
+                      scrollGesturesEnabled: true,
+                      tiltGesturesEnabled: true,
+                      mapType: MapType.normal,
+                      minMaxZoomPreference: MinMaxZoomPreference(1, 20),
+                      buildingsEnabled: true,
+                      compassEnabled: true,
+                      trafficEnabled: false,
+                      mapToolbarEnabled: true,
+                      onCameraMove: (CameraPosition position) {
+                        // Optional: Handle camera movement
+                      },
+                      onCameraIdle: () {
+                        // Optional: Handle when camera stops moving
+                      },
                     ),
-                  ),
-                // SOS button
-                _buildSosButton(),
-              ],
-            ),
+                    // Single suggestions container that handles both start and end
+                    if (_showStartSuggestions || _showEndSuggestions)
+                      Positioned(
+                        top: 0,
+                        left: 16,
+                        right: 16,
+                        child: Container(
+                          margin: EdgeInsets.only(top: 8),
+                          child: _buildSuggestionsContainer(
+                            _showStartSuggestions ? _startPredictions : _endPredictions,
+                            _showStartSuggestions,
+                          ),
+                        ),
+                      ),
+                    // Start Journey button
+                    if (currentPosition != null && destinationPosition != null)
+                      Positioned(
+                        bottom: 20,
+                        left: 20,
+                        right: 20,
+                        child: ElevatedButton(
+                          onPressed: () {
+                            print('Starting journey...');
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.blue[700],
+                            padding: EdgeInsets.symmetric(vertical: 16),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          child: Text(
+                            'Start Journey',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ),
+                    // SOS button
+                    _buildSosButton(),
+                  ],
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -1187,6 +1196,91 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           }
         },
       ),
+    );
+  }
+
+  Widget _buildSuggestionsContainer(List<Prediction> predictions, bool isStart) {
+    return Container(
+      margin: EdgeInsets.only(top: 4),
+      constraints: BoxConstraints(maxHeight: 200),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 8,
+            offset: Offset(0, 4),
+          ),
+        ],
+      ),
+      child: ListView.builder(
+        shrinkWrap: true,
+        itemCount: predictions.length,
+        itemBuilder: (context, index) {
+          final prediction = predictions[index];
+          return Material(
+            color: Colors.transparent,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: () => _selectLocation(prediction, isStart),
+              child: Container(
+                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                child: Row(
+                  children: [
+                    Icon(
+                      isStart ? Icons.my_location : Icons.location_on,
+                      color: isStart ? Colors.blue[700] : Colors.red[700],
+                      size: 20,
+                    ),
+                    SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            prediction.structuredFormatting?.mainText ?? '',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w500,
+                              color: Colors.black87,
+                            ),
+                          ),
+                          if (prediction.structuredFormatting?.secondaryText != null)
+                            Text(
+                              prediction.structuredFormatting!.secondaryText!,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey[600],
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildInfoItem(IconData icon, String text) {
+    return Row(
+      children: [
+        Icon(icon, color: Colors.blue[700], size: 20),
+        SizedBox(width: 8),
+        Text(
+          text,
+          style: TextStyle(
+            color: Colors.blue[900],
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ],
     );
   }
 }
