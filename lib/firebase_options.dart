@@ -50,21 +50,18 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyA7LIOUG9e0jevUPj78I-BnPW6G7wd4Ymo',
-    appId: '1:214420805388:android:721c51d8c56a734515db29',
-    messagingSenderId: '214420805388',
-    projectId: 'ecub-v2',
-    storageBucket: 'ecub-v2.appspot.com',
+    apiKey: 'AIzaSyD0wKXUZHUBAtRyna9jcKX2eCdANf_DERY',
+    appId: '1:732286850360:android:09daca422e3e20b4709dcd',
+    messagingSenderId: '732286850360',
+    projectId: 'carpool-6e70b',
+    storageBucket: 'carpool-6e70b.firebasestorage.app',
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyB4ARSZ-N-goKK1ouLOFaU1asesUsTFohg',
-    appId: '1:214420805388:ios:232cf27a8c44f04e15db29',
-    messagingSenderId: '214420805388',
-    projectId: 'ecub-v2',
-    storageBucket: 'ecub-v2.appspot.com',
-    androidClientId: '214420805388-476ro9sto1snq2pkv22ce08v5f45an97.apps.googleusercontent.com',
-    iosClientId: '214420805388-18iru08f1lmh4dnld8l6qpb801ulpde0.apps.googleusercontent.com',
-    iosBundleId: 'com.example.ecubDelivery',
+    apiKey: 'AIzaSyD0wKXUZHUBAtRyna9jcKX2eCdANf_DERY',
+    appId: '1:732286850360:ios:09daca422e3e20b4709dcd',
+    messagingSenderId: '732286850360',
+    projectId: 'carpool-6e70b',
+    storageBucket: 'carpool-6e70b.firebasestorage.app',
   );
 }
