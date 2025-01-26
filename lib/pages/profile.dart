@@ -6,6 +6,14 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:ecub_delivery/pages/document_submission.dart';
 
+enum VerificationStatus {
+  loading,
+  verified,
+  unverified,
+  pending,
+  initial
+}
+
 class ProfilePage extends StatefulWidget {
   @override
   _ProfilePageState createState() => _ProfilePageState();
@@ -14,18 +22,51 @@ class ProfilePage extends StatefulWidget {
 class _ProfilePageState extends State<ProfilePage> {
   final UserService _userService = UserService();
   Future<Map<String, dynamic>?>? _userDataFuture;
-  bool _isUpdatingVerification = false;
+  VerificationStatus _verificationStatus = VerificationStatus.initial;
+  bool _isCheckingVerification = false;
 
   @override
   void initState() {
     super.initState();
     _refreshData();
+    _initialVerificationCheck();
   }
 
   void _refreshData() {
     setState(() {
       _userDataFuture = _userService.fetchUserData();
     });
+    _initialVerificationCheck();
+  }
+
+  Future<void> _initialVerificationCheck() async {
+    try {
+      final verificationData = await _getVerificationStatus();
+      
+      if (verificationData == null) {
+        setState(() => _verificationStatus = VerificationStatus.initial);
+        return;
+      }
+
+      final submissionStatus = verificationData['submissionStatus'] as String?;
+      final isLicenseValid = verificationData['isLicenseValid'] as bool? ?? false;
+      final isPanValid = verificationData['isPanValid'] as bool? ?? false;
+      final isOverallDataValid = verificationData['isOverallDataValid'] as bool? ?? false;
+      final submittedAt = verificationData['submittedAt'];
+
+      setState(() {
+        if (isOverallDataValid && isLicenseValid && isPanValid) {
+          _verificationStatus = VerificationStatus.verified;
+        } else if (submissionStatus == 'pending' && submittedAt != null) {
+          _verificationStatus = VerificationStatus.pending;
+        } else {
+          _verificationStatus = VerificationStatus.unverified;
+        }
+      });
+    } catch (e) {
+      print('Error in initial verification check: $e');
+      setState(() => _verificationStatus = VerificationStatus.initial);
+    }
   }
 
   Future<Map<String, dynamic>?> _getVerificationStatus() async {
@@ -220,93 +261,128 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   Widget _buildVerificationSection(Map<String, dynamic> userData) {
-    return FutureBuilder<Map<String, dynamic>?>(
-      future: _getVerificationStatus(),
-      builder: (context, snapshot) {
-        String statusText = 'Submit your documents to start giving rides';
-        Color statusColor = Colors.orange;
-        Color bgStartColor = Colors.orange[50]!;
-        Color bgEndColor = Colors.orange[100]!.withOpacity(0.5);
-        IconData statusIcon = Icons.upload_file;
-        bool isOverallDataValid = false;
-
-        if (snapshot.hasData && snapshot.data != null) {
-          final data = snapshot.data!;
-          final submissionStatus = data['submissionStatus'] as String?;
-          final isLicenseValid = data['isLicenseValid'] as bool? ?? false;
-          final isPanValid = data['isPanValid'] as bool? ?? false;
-          isOverallDataValid = data['isOverallDataValid'] as bool? ?? false;
-          final submittedAt = data['submittedAt'];
-
-          // Check if any of the three validations are false
-          if (!isLicenseValid || !isPanValid || !isOverallDataValid) {
-            List<String> failedDocs = [];
-            if (!isLicenseValid && data['drivingLicenseNumber'] != null) {
-              failedDocs.add('Driving License');
-            }
-            if (!isPanValid && data['panNumber'] != null) {
-              failedDocs.add('PAN Card');
-            }
-
-            statusText = 'Not Verified';
-            if (failedDocs.isNotEmpty) {
-              statusText += '\nFailed documents: ${failedDocs.join(", ")}';
-            }
-            
-            statusColor = Colors.red;
-            bgStartColor = Colors.red[50]!;
-            bgEndColor = Colors.red[100]!.withOpacity(0.5);
-            statusIcon = Icons.gpp_bad;
-          } else if (isOverallDataValid) {
-            statusText = 'Verified ✓';
-            statusColor = const Color(0xFF33691E);
-            bgStartColor = const Color(0xFFAED581);
-            bgEndColor = const Color(0xFFAED581).withOpacity(0.5);
-            statusIcon = Icons.verified_user;
-          } else if (submissionStatus == 'pending' && submittedAt != null) {
-            statusText = 'Documents under review';
-            statusColor = Colors.blue;
-            bgStartColor = Colors.blue[50]!;
-            bgEndColor = Colors.blue[100]!.withOpacity(0.5);
-            statusIcon = Icons.pending;
+    return StatefulBuilder(
+      builder: (context, setState) {
+        Color getStatusColor() {
+          switch (_verificationStatus) {
+            case VerificationStatus.loading:
+              return Colors.grey;
+            case VerificationStatus.verified:
+              return const Color(0xFF2E7D32);
+            case VerificationStatus.unverified:
+              return Colors.red;
+            case VerificationStatus.pending:
+              return Colors.blue;
+            case VerificationStatus.initial:
+              return Colors.orange;
           }
         }
 
-        return InkWell(
-          onTap: () {
-            setState(() => _isUpdatingVerification = true);
-            _refreshData();
-            Future.delayed(Duration(milliseconds: 500), () {
-              if (mounted) {
-                setState(() => _isUpdatingVerification = false);
+        String getStatusText() {
+          switch (_verificationStatus) {
+            case VerificationStatus.loading:
+              return 'Checking verification status...';
+            case VerificationStatus.verified:
+              return 'Verified ✓';
+            case VerificationStatus.unverified:
+              return 'Not Verified';
+            case VerificationStatus.pending:
+              return 'Documents under review';
+            case VerificationStatus.initial:
+              return 'Submit your documents to start giving rides';
+          }
+        }
+
+        IconData getStatusIcon() {
+          switch (_verificationStatus) {
+            case VerificationStatus.loading:
+              return Icons.safety_check;
+            case VerificationStatus.verified:
+              return Icons.verified_user;
+            case VerificationStatus.unverified:
+              return Icons.gpp_bad;
+            case VerificationStatus.pending:
+              return Icons.pending;
+            case VerificationStatus.initial:
+              return Icons.upload_file;
+          }
+        }
+
+        Future<void> checkVerificationStatus() async {
+          if (_isCheckingVerification) return;
+
+          setState(() {
+            _isCheckingVerification = true;
+            _verificationStatus = VerificationStatus.loading;
+          });
+
+          try {
+            final verificationData = await _getVerificationStatus();
+            
+            if (verificationData == null) {
+              setState(() => _verificationStatus = VerificationStatus.initial);
+              return;
+            }
+
+            final submissionStatus = verificationData['submissionStatus'] as String?;
+            final isLicenseValid = verificationData['isLicenseValid'] as bool? ?? false;
+            final isPanValid = verificationData['isPanValid'] as bool? ?? false;
+            final isOverallDataValid = verificationData['isOverallDataValid'] as bool? ?? false;
+            final submittedAt = verificationData['submittedAt'];
+
+            setState(() {
+              if (isOverallDataValid && isLicenseValid && isPanValid) {
+                _verificationStatus = VerificationStatus.verified;
+              } else if (submissionStatus == 'pending' && submittedAt != null) {
+                _verificationStatus = VerificationStatus.pending;
+              } else {
+                _verificationStatus = VerificationStatus.unverified;
               }
             });
-          },
+          } catch (e) {
+            print('Error checking verification status: $e');
+            setState(() => _verificationStatus = VerificationStatus.initial);
+          } finally {
+            setState(() => _isCheckingVerification = false);
+          }
+        }
+
+        final statusColor = getStatusColor();
+
+        return InkWell(
+          onTap: checkVerificationStatus,
           child: Container(
             margin: EdgeInsets.only(top: 20),
             padding: EdgeInsets.all(20),
             decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [bgStartColor, bgEndColor],
-              ),
+              color: _verificationStatus == VerificationStatus.loading 
+                  ? Colors.grey[100]
+                  : _verificationStatus == VerificationStatus.verified
+                      ? const Color(0xFFE8F5E9)
+                      : statusColor.withOpacity(0.1),
               borderRadius: BorderRadius.circular(15),
-              boxShadow: [
-                BoxShadow(
-                  color: statusColor.withOpacity(0.3),
-                  spreadRadius: 2,
-                  blurRadius: 8,
-                  offset: Offset(0, 2),
-                ),
-              ],
+              border: Border.all(
+                color: _verificationStatus == VerificationStatus.verified
+                    ? const Color(0xFF81C784)
+                    : statusColor.withOpacity(0.3),
+                width: 1,
+              ),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
                   children: [
-                    Icon(statusIcon, color: statusColor, size: 28),
+                    _verificationStatus == VerificationStatus.loading
+                        ? SizedBox(
+                            width: 28,
+                            height: 28,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(statusColor),
+                            ),
+                          )
+                        : Icon(getStatusIcon(), color: statusColor, size: 28),
                     SizedBox(width: 10),
                     Expanded(
                       child: Column(
@@ -317,15 +393,19 @@ class _ProfilePageState extends State<ProfilePage> {
                             style: TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
-                              color: statusColor,
+                              color: _verificationStatus == VerificationStatus.verified
+                                  ? const Color(0xFF1B5E20)
+                                  : statusColor,
                             ),
                           ),
                           SizedBox(height: 4),
                           Text(
-                            statusText,
+                            getStatusText(),
                             style: TextStyle(
                               fontSize: 14,
-                              color: statusColor,
+                              color: _verificationStatus == VerificationStatus.verified
+                                  ? const Color(0xFF2E7D32)
+                                  : statusColor,
                               fontWeight: FontWeight.w500,
                             ),
                           ),
@@ -334,15 +414,8 @@ class _ProfilePageState extends State<ProfilePage> {
                     ),
                   ],
                 ),
-                if (_isUpdatingVerification)
-                  Padding(
-                    padding: EdgeInsets.only(top: 12),
-                    child: LinearProgressIndicator(
-                      backgroundColor: statusColor.withOpacity(0.2),
-                      valueColor: AlwaysStoppedAnimation<Color>(statusColor),
-                    ),
-                  ),
-                if (!isOverallDataValid) ...[
+                if (_verificationStatus != VerificationStatus.verified && 
+                    _verificationStatus != VerificationStatus.loading) ...[
                   SizedBox(height: 16),
                   ElevatedButton.icon(
                     onPressed: () async {
@@ -353,7 +426,7 @@ class _ProfilePageState extends State<ProfilePage> {
                         ),
                       );
                       if (result == true) {
-                        _refreshData();
+                        checkVerificationStatus();
                       }
                     },
                     icon: Icon(Icons.upload_file, size: 20, color: Colors.white),
@@ -492,25 +565,12 @@ class _ProfilePageState extends State<ProfilePage> {
                   Container(
                     padding: EdgeInsets.all(20),
                     decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [
-                          Colors.blue[50]!,
-                          Colors.blue[100]!,
-                          Colors.blue[200]!.withOpacity(0.5),
-                        ],
-                        stops: const [0.0, 0.6, 1.0],
-                      ),
+                      color: Colors.blue[50],
                       borderRadius: BorderRadius.circular(15),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.blue[200]!.withOpacity(0.3),
-                          spreadRadius: 2,
-                          blurRadius: 8,
-                          offset: Offset(0, 2),
-                        ),
-                      ],
+                      border: Border.all(
+                        color: Colors.blue[200]!,
+                        width: 1,
+                      ),
                     ),
                     child: Column(
                       children: [
@@ -560,20 +620,10 @@ class _ProfilePageState extends State<ProfilePage> {
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(15),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.grey[300]!,
-                          offset: Offset(0, 4),
-                          blurRadius: 12,
-                          spreadRadius: 0,
-                        ),
-                        BoxShadow(
-                          color: Colors.grey[200]!,
-                          offset: Offset(0, 2),
-                          blurRadius: 6,
-                          spreadRadius: -2,
-                        ),
-                      ],
+                      border: Border.all(
+                        color: Colors.grey[300]!,
+                        width: 1,
+                      ),
                     ),
                     child: Column(
                       children: [
