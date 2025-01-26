@@ -26,7 +26,11 @@ target 'Runner' do
 
   # Include Firebase dependencies
   pod 'Firebase/Core'
-  pod 'Firebase/Firestore'
+  pod 'FirebaseFirestore' # Add this line
+  pod 'FirebaseAuth'
+  pod 'FirebaseStorage'
+  pod 'FirebaseMessaging'
+  pod 'FirebaseAnalytics'
 end
 
 post_install do |installer|
