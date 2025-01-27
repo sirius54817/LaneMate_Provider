@@ -5,7 +5,8 @@ import 'package:ecub_delivery/pages/signup.dart';
 import 'package:ecub_delivery/services/auth_service.dart';
 import 'package:ecub_delivery/pages/navigation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:google_fonts/google_fonts.dart';
+
 
 class Login extends StatefulWidget {
   const Login({Key? key}) : super(key: key);
@@ -23,7 +24,18 @@ class _LoginState extends State<Login> {
     'assets/carousel1.png',
     'assets/carousel2.png',
     'assets/carousel3.png',
+    'assets/carousel4.png',
   ];
+
+  // Add new field for captions
+  final List<String> carouselCaptions = [
+    "Hop in, Hassle out - Simple Pickup Points",
+    "Always There When You Need",
+    "Smooth Rides, Smoother Payments",
+    "Perfect Pickup, Perfect Journey"
+  ];
+
+  int _currentCarouselIndex = 0;
 
   @override
   void dispose() {
@@ -46,20 +58,31 @@ class _LoginState extends State<Login> {
                 const SizedBox(height: 80),
                 Text(
                   'LaneMates',
-                  style: TextStyle(
+                  style: GoogleFonts.montserrat(
                     fontSize: 40,
                     fontWeight: FontWeight.bold,
                     color: Colors.blue.shade700,
                   ),
                 ),
+                
+                const SizedBox(height: 8),
+                
                 Text(
-                  'Welcome Back!',
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.black87,
+                  'Share the Journey, Share the Joy',
+                  style: GoogleFonts.montserrat(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w500,
+                    // color: Colors.blue.shade600,
+                    letterSpacing: 0.5,
                   ),
                 ),
+                // Text(
+                //   'Welcome Back!',
+                //   style: TextStyle(
+                //     fontSize: 24,
+                //     fontWeight: FontWeight.w600,
+                //     color: Colors.black87,
+                //   ),
                 const SizedBox(height: 20),
                 SingleChildScrollView(
                   physics: const NeverScrollableScrollPhysics(),
@@ -128,37 +151,92 @@ class _LoginState extends State<Login> {
   }
 
   Widget _bottomCarousel() {
-    return CarouselSlider(
-      options: CarouselOptions(
-        height: 220, // Increased from 120 to 220
-        autoPlay: true,
-        enlargeCenterPage: true,
-        aspectRatio: 16/9,
-        autoPlayCurve: Curves.fastOutSlowIn,
-        enableInfiniteScroll: true,
-        autoPlayAnimationDuration: const Duration(milliseconds: 800),
-      ),
-      items: carouselImages.map((imagePath) {
-        return Builder(
-          builder: (BuildContext context) {
-            return Container(
-              width: MediaQuery.of(context).size.width,
-              margin: const EdgeInsets.symmetric(horizontal: 5.0),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(10),
-                image: DecorationImage(
-                  image: AssetImage(imagePath),
-                  fit: BoxFit.cover,
-                ),
-              ),
+    return Column(
+      children: [
+        CarouselSlider(
+          options: CarouselOptions(
+            height: 220,
+            autoPlay: true,
+            enlargeCenterPage: true,
+            viewportFraction: 0.9,
+            aspectRatio: 16/9,  // Fixed aspect ratio
+            autoPlayCurve: Curves.fastOutSlowIn,
+            enableInfiniteScroll: true,
+            autoPlayAnimationDuration: const Duration(milliseconds: 800),
+            onPageChanged: (index, reason) {
+              setState(() {
+                _currentCarouselIndex = index;
+              });
+            }
+          ),
+          items: List.generate(carouselImages.length, (index) {
+            return Builder(
+              builder: (BuildContext context) {
+                return Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 5.0),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(15),
+                    boxShadow: [
+                      // BoxShadow(
+                      //   color: Colors.black.withOpacity(0.2),
+                      //   spreadRadius: 1,
+                      //   blurRadius: 5,
+                      // )
+                    ],
+                  ),
+                  child: Column(
+                    children: [
+                      Expanded(
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(15),
+                          clipBehavior: Clip.hardEdge,
+                          child: AspectRatio(
+                            aspectRatio: 16/9,
+                            child: Image.asset(
+                              carouselImages[index],
+                              width: double.infinity,
+                              height: double.infinity,
+                              fit: BoxFit.cover,
+                              alignment: Alignment.center,
+                            ),
+                          ),
+                        ),
+                      ),
+                      Container(
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(0.8),
+                          borderRadius: BorderRadius.circular(15),  // Changed this line
+                        ),
+                        margin: const EdgeInsets.symmetric(
+                          horizontal: 5,
+                          vertical: 5,
+                        ),  // Added margin
+                        padding: const EdgeInsets.symmetric(
+                          vertical: 15,
+                          horizontal: 15,
+                        ),
+                        child: Text(
+                          carouselCaptions[index],
+                          style: GoogleFonts.montserrat(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.white,
+                            letterSpacing: 0.5,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
             );
-          },
-        );
-      }).toList(),
+          }),
+        ),
+      ],
     );
   }
-
+//
   // Rest of the code remains unchanged
   Widget _loginTextField({
     required TextEditingController controller,
@@ -180,8 +258,25 @@ class _LoginState extends State<Login> {
         filled: true,
         fillColor: Colors.white.withOpacity(0.7),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide.none,
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(
+            color: Colors.lightGreen.shade200,
+            width: 1.5,
+          ),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(
+            color: Colors.lightGreen.shade200,
+            width: 1.5,
+          ),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(
+            color: Colors.lightGreen.shade400,
+            width: 2,
+          ),
         ),
         suffixIcon: suffixIcon,
       ),
@@ -238,62 +333,32 @@ class _LoginState extends State<Login> {
 
   void _performLogin() async {
     try {
-      // Check if user exists in users collection
-      final userSnapshot = await FirebaseFirestore.instance
-          .collection('users')
+      final agentSnapshot = await FirebaseFirestore.instance
+          .collection('delivery_agent')
           .where('email', isEqualTo: _emailController.text)
           .get();
 
-      if (userSnapshot.docs.isEmpty) {
+      if (agentSnapshot.docs.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('No account found with this email'),
+            content: Text('Access denied: Not a registered delivery agent'),
             backgroundColor: Colors.red,
           ),
         );
         return;
       }
 
-      // Perform sign in
       await AuthService().signin(
         email: _emailController.text,
         password: _passwordController.text,
         context: context,
       );
 
-      // After successful login, check if user has completed driver verification
-      final userId = FirebaseAuth.instance.currentUser?.uid;
-      if (userId != null) {
-        final driverVerification = await FirebaseFirestore.instance
-            .collection('driver_verifications')
-            .doc(userId)
-            .get();
-
-        if (driverVerification.exists) {
-          final isVerified = driverVerification.data()?['isOverallDataValid'] ?? false;
-          if (!isVerified) {
-            // Show a message about pending verification if they've submitted docs
-            final hasSubmitted = driverVerification.data()?['submittedAt'] != null;
-            if (hasSubmitted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Your driver verification is pending approval'),
-                  backgroundColor: Colors.orange,
-                ),
-              );
-            }
-          }
-        }
-      }
-
-      // Navigate to main screen
-      if (!context.mounted) return;
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (context) => MainNavigation()),
       );
     } catch (e) {
-      if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Login failed: ${e.toString()}'),
