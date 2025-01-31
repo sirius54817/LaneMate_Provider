@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:ecub_delivery/pages/seat_layout.dart';
 
 class VehicleSelectionPage extends StatelessWidget {
   final LatLng startPoint;
@@ -188,9 +189,18 @@ class VehicleSelectionPage extends StatelessWidget {
   ) {
     return GestureDetector(
       onTap: () {
-        // Handle vehicle selection
-        print('Selected $title');
-        // TODO: Implement vehicle selection logic
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => SeatLayoutPage(
+              vehicleType: title == 'Sedan' ? VehicleType.sedan : VehicleType.suv,
+              startAddress: startAddress,
+              destinationAddress: destinationAddress,
+              distance: distance,
+              duration: duration,
+            ),
+          ),
+        );
       },
       child: Container(
         padding: EdgeInsets.all(16),
@@ -251,4 +261,4 @@ class VehicleSelectionPage extends StatelessWidget {
       ),
     );
   }
-} 
+}
