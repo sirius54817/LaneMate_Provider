@@ -23,6 +23,7 @@ import 'dart:math';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:ecub_delivery/pages/vehicle_selection.dart';
 
 final logger = Logger();
 
@@ -1090,7 +1091,19 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                         right: 20,
                         child: ElevatedButton(
                           onPressed: () {
-                            print('Starting journey...');
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => VehicleSelectionPage(
+                                  startPoint: currentPosition!,
+                                  destination: destinationPosition!,
+                                  startAddress: _startSearchController.text,
+                                  destinationAddress: _endSearchController.text,
+                                  distance: distance ?? 'Unknown',
+                                  duration: eta ?? 'Unknown',
+                                ),
+                              ),
+                            );
                           },
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.blue[700],
