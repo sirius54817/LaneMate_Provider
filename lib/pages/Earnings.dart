@@ -103,7 +103,7 @@ class _EarningsPageState extends State<EarningsPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: Colors.green[100],
+        backgroundColor: Colors.green.shade50,
         toolbarHeight: 80,
         elevation: 0,
         automaticallyImplyLeading: false,
@@ -112,100 +112,114 @@ class _EarningsPageState extends State<EarningsPage> {
             Text(
               'LaneMate',
               style: TextStyle(
-                color: Colors.green[900],
-                fontSize: 22,
+                foreground: Paint()
+                  ..shader = LinearGradient(
+                    colors: [
+                      Colors.green.shade800,
+                      Colors.green.shade600,
+                    ],
+                  ).createShader(Rect.fromLTWH(0.0, 0.0, 200.0, 70.0)),
+                fontSize: 24,
                 fontWeight: FontWeight.bold,
               ),
             ),
             Text(
               ' • ',
               style: TextStyle(
-                color: Colors.green[300],
-                fontSize: 22,
+                color: Colors.green.shade300,
+                fontSize: 24,
               ),
             ),
             Text(
               'Earnings',
               style: TextStyle(
-                color: Colors.green[700],
-                fontSize: 20,
+                foreground: Paint()
+                  ..shader = LinearGradient(
+                    colors: [
+                      Colors.green.shade700,
+                      Colors.green.shade500,
+                    ],
+                  ).createShader(Rect.fromLTWH(0.0, 0.0, 200.0, 70.0)),
+                fontSize: 22,
                 fontWeight: FontWeight.w500,
               ),
             ),
           ],
         ),
         actions: [
-          // Add refresh button
           IconButton(
             icon: Icon(
               Icons.refresh,
-              color: Colors.green[700],
+              color: Colors.green.shade700,
             ),
             onPressed: () async {
-              setState(() {
-                _isLoading = true;
-              });
-              
-              // Cancel existing subscription
+              setState(() => _isLoading = true);
               await _agentSubscription?.cancel();
-              
-              // Setup stream again
               _setupAgentStream();
-              
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
-                  content: Text('Refreshing earnings data...'),
+                  content: Row(
+                    children: [
+                      Icon(Icons.refresh, color: Colors.white),
+                      SizedBox(width: 8),
+                      Text('Refreshing earnings...'),
+                    ],
+                  ),
+                  behavior: SnackBarBehavior.floating,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  backgroundColor: Colors.green.shade700,
                   duration: Duration(seconds: 1),
-                  backgroundColor: Colors.blue,
                 ),
               );
             },
           ),
-          SizedBox(width: 8),  // Add some padding
+          SizedBox(width: 8),
         ],
       ),
-      backgroundColor: Colors.green[100],
+      backgroundColor: Colors.green.shade50,
       body: _isLoading
-          ? Center(child: CircularProgressIndicator(
-              color: Colors.blue[700],
-            ))
+          ? Center(
+              child: CircularProgressIndicator(
+                color: Colors.green.shade700,
+              ),
+            )
           : Padding(
               padding: EdgeInsets.all(20),
               child: Column(
                 children: [
-                  // Earnings Summary Card
+                  // Enhanced Earnings Summary Card
                   Container(
-                    padding: EdgeInsets.all(20),
+                    padding: EdgeInsets.all(24),
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                         colors: [
-                          Color(0xFFAED581).withOpacity(0.3),
-                          Color(0xFFAED581).withOpacity(0.5),
-                          Color(0xFFAED581).withOpacity(0.7),
+                          Colors.green.shade400,
+                          Colors.green.shade600,
                         ],
-                        stops: const [0.0, 0.6, 1.0],
                       ),
-                      borderRadius: BorderRadius.circular(15),
+                      borderRadius: BorderRadius.circular(20),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.green[200]!.withOpacity(0.3),
+                          color: Colors.green.shade200.withOpacity(0.5),
                           spreadRadius: 2,
-                          blurRadius: 8,
-                          offset: Offset(0, 2),
+                          blurRadius: 15,
+                          offset: Offset(0, 5),
                         ),
                       ],
                     ),
                     child: Stack(
                       children: [
                         Positioned(
-                          top: -20,
-                          right: -20,
+                          top: -30,
+                          right: -30,
                           child: Icon(
                             Icons.account_balance_wallet,
-                            size: 120,
-                            color: Colors.green[600]!.withOpacity(0.3),
+                            size: 150,
+                            color: Colors.white.withOpacity(0.2),
                           ),
                         ),
                         Column(
@@ -213,25 +227,37 @@ class _EarningsPageState extends State<EarningsPage> {
                           children: [
                             Row(
                               children: [
-                                Icon(Icons.payments, color: Colors.green[700]),
-                                SizedBox(width: 8),
+                                Container(
+                                  padding: EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withOpacity(0.2),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Icon(
+                                    Icons.payments,
+                                    color: Colors.white,
+                                    size: 24,
+                                  ),
+                                ),
+                                SizedBox(width: 12),
                                 Text(
                                   'Total Earnings',
                                   style: TextStyle(
-                                    color: Colors.green[900],
-                                    fontSize: 20,
+                                    color: Colors.white,
+                                    fontSize: 22,
                                     fontWeight: FontWeight.bold,
                                   ),
                                 ),
                               ],
                             ),
-                            SizedBox(height: 15),
+                            SizedBox(height: 20),
                             Text(
                               '₹${_totalEarnings.toStringAsFixed(2)}',
                               style: TextStyle(
-                                fontSize: 32,
+                                fontSize: 36,
                                 fontWeight: FontWeight.bold,
-                                color: Colors.green[900],
+                                color: Colors.white,
+                                letterSpacing: 1,
                               ),
                             ),
                           ],
@@ -239,26 +265,20 @@ class _EarningsPageState extends State<EarningsPage> {
                       ],
                     ),
                   ),
-                  SizedBox(height: 20),
-                  // rides history
+                  SizedBox(height: 24),
+                  // Enhanced Rides History Section
                   Expanded(
                     child: Container(
-                      padding: EdgeInsets.all(20),
+                      padding: EdgeInsets.all(24),
                       decoration: BoxDecoration(
                         color: Colors.white,
-                        borderRadius: BorderRadius.circular(15),
+                        borderRadius: BorderRadius.circular(20),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.grey[300]!,
+                            color: Colors.grey.shade200,
                             offset: Offset(0, 4),
-                            blurRadius: 12,
-                            spreadRadius: 0,
-                          ),
-                          BoxShadow(
-                            color: Colors.grey[200]!,
-                            offset: Offset(0, 2),
-                            blurRadius: 6,
-                            spreadRadius: -2,
+                            blurRadius: 15,
+                            spreadRadius: 2,
                           ),
                         ],
                       ),
@@ -267,19 +287,30 @@ class _EarningsPageState extends State<EarningsPage> {
                         children: [
                           Row(
                             children: [
-                              Icon(Icons.history, color: Colors.green[700]),
-                              SizedBox(width: 8),
+                              Container(
+                                padding: EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: Colors.green.shade50,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Icon(
+                                  Icons.history,
+                                  color: Colors.green.shade700,
+                                  size: 24,
+                                ),
+                              ),
+                              SizedBox(width: 12),
                               Text(
-                                'Rides history',
+                                'Rides History',
                                 style: TextStyle(
-                                  color: Colors.green[900],
-                                  fontSize: 20,
+                                  color: Colors.green.shade900,
+                                  fontSize: 22,
                                   fontWeight: FontWeight.bold,
                                 ),
                               ),
                             ],
                           ),
-                          SizedBox(height: 15),
+                          SizedBox(height: 20),
                           Expanded(
                             child: _deliveryHistory.isEmpty
                                 ? Center(
@@ -288,25 +319,33 @@ class _EarningsPageState extends State<EarningsPage> {
                                       children: [
                                         Icon(
                                           Icons.history,
-                                          size: 64,
-                                          color: Colors.green[200],
+                                          size: 80,
+                                          color: Colors.green.shade200,
                                         ),
                                         SizedBox(height: 16),
                                         Text(
-                                          'No rides history yet',
+                                          'No rides yet',
                                           style: TextStyle(
-                                            color: Colors.green[900],
-                                            fontSize: 16,
+                                            color: Colors.green.shade900,
+                                            fontSize: 18,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                        Text(
+                                          'Your completed rides will appear here',
+                                          style: TextStyle(
+                                            color: Colors.grey.shade600,
+                                            fontSize: 14,
                                           ),
                                         ),
                                       ],
                                     ),
                                   )
                                 : ListView.builder(
+                                    physics: BouncingScrollPhysics(),
                                     itemCount: _deliveryHistory.length,
                                     itemBuilder: (context, index) {
-                                      final delivery = _deliveryHistory[index];
-                                      return _buildDeliveryCard(delivery);
+                                      return _buildDeliveryCard(_deliveryHistory[index]);
                                     },
                                   ),
                           ),
@@ -323,93 +362,96 @@ class _EarningsPageState extends State<EarningsPage> {
   Widget _buildDeliveryCard(Map<String, dynamic> delivery) {
     final timestamp = delivery['timestamp'] as Timestamp;
     final date = DateFormat('MMM dd, yyyy hh:mm a').format(timestamp.toDate());
-    final orderType = delivery['type'] ?? 'food';  // Default to food if not specified
+    final orderType = delivery['type'] ?? 'food';
 
-    return Card(
-      margin: EdgeInsets.only(bottom: 12),
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.centerLeft,
-            end: Alignment.centerRight,
-            colors: [
-              Colors.white,
-              Colors.green[50]!.withOpacity(0.3),
-            ],
+    return Container(
+      margin: EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+          colors: [
+            orderType == 'medical' 
+                ? Colors.blue.shade50 
+                : Colors.green.shade50,
+            Colors.white,
+          ],
+        ),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.shade200,
+            offset: Offset(0, 2),
+            blurRadius: 8,
           ),
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.grey[300]!,
-              offset: Offset(0, 3),
-              blurRadius: 8,
-              spreadRadius: -2,
+        ],
+      ),
+      child: ListTile(
+        contentPadding: EdgeInsets.all(16),
+        leading: Container(
+          padding: EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: orderType == 'medical' 
+                ? Colors.blue.shade100.withOpacity(0.3)
+                : Colors.green.shade100.withOpacity(0.3),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(
+            orderType == 'medical' ? Icons.medical_services : Icons.delivery_dining,
+            color: orderType == 'medical' ? Colors.blue.shade700 : Colors.green.shade700,
+            size: 24,
+          ),
+        ),
+        title: Row(
+          children: [
+            Text(
+              '₹${delivery['amount']}',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: Colors.green.shade900,
+                fontSize: 20,
+              ),
             ),
-            BoxShadow(
-              color: Colors.grey[200]!,
-              offset: Offset(0, 1),
-              blurRadius: 4,
-              spreadRadius: -1,
+            Spacer(),
+            Container(
+              padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: orderType == 'medical' 
+                    ? Colors.blue.shade50 
+                    : Colors.green.shade50,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                orderType.toUpperCase(),
+                style: TextStyle(
+                  color: orderType == 'medical' 
+                      ? Colors.blue.shade700 
+                      : Colors.green.shade700,
+                  fontWeight: FontWeight.w500,
+                  fontSize: 12,
+                ),
+              ),
             ),
           ],
         ),
-        child: ListTile(
-          contentPadding: EdgeInsets.all(16),
-          leading: Container(
-            padding: EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: orderType == 'medical' ? Colors.blue[50] : Colors.green[50],
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                color: orderType == 'medical' ? Colors.blue[100]! : Colors.green[100]!,
-                width: 1,
-              ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(height: 8),
+            Text(
+              date,
+              style: TextStyle(color: Colors.grey.shade600),
             ),
-            child: Icon(
-              orderType == 'medical' ? Icons.medical_services : Icons.delivery_dining,
-              color: orderType == 'medical' ? Colors.green[700] : Colors.green[700],
-              size: 20,
+            Text(
+              delivery['location'] ?? 'Location not available',
+              style: TextStyle(color: Colors.grey.shade700),
             ),
-          ),
-          title: Text(
-            '₹${delivery['amount']}',
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              color: Colors.green[900],
-              fontSize: 18,
-            ),
-          ),
-          subtitle: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              SizedBox(height: 4),
-              Text(date),
+            if (delivery['distance'] != null)
               Text(
-                delivery['location'] ?? 'Location not available',
-                style: TextStyle(
-                  color: Colors.grey[600],
-                ),
+                'Distance: ${delivery['distance']}',
+                style: TextStyle(color: Colors.grey.shade600),
               ),
-              if (delivery['distance'] != null)
-                Text(
-                  'Distance: ${delivery['distance']}',
-                  style: TextStyle(
-                    color: Colors.grey[600],
-                  ),
-                ),
-              Text(
-                'Type: ${orderType.toUpperCase()}',
-                style: TextStyle(
-                  color: orderType == 'medical' ? Colors.blue[700] : Colors.green[700],
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
-          ),
+          ],
         ),
       ),
     );

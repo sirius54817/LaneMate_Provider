@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
+import 'passenger_details_page.dart';
 
 enum VehicleType { sedan, suv }
 
-class SeatLayoutPage extends StatelessWidget {
+class SeatLayoutPage extends StatefulWidget {
   final VehicleType vehicleType;
   final String startAddress;
   final String destinationAddress;
@@ -19,11 +20,28 @@ class SeatLayoutPage extends StatelessWidget {
   }) : super(key: key);
 
   @override
+  State<SeatLayoutPage> createState() => _SeatLayoutPageState();
+}
+
+class _SeatLayoutPageState extends State<SeatLayoutPage> {
+  Set<String> selectedSeats = {};
+
+  void toggleSeat(String seatId) {
+    setState(() {
+      if (selectedSeats.contains(seatId)) {
+        selectedSeats.remove(seatId);
+      } else {
+        selectedSeats.add(seatId);
+      }
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          vehicleType == VehicleType.sedan ? 'Sedan Layout' : 'SUV Layout',
+          widget.vehicleType == VehicleType.sedan ? 'Sedan Layout' : 'SUV Layout',
           style: TextStyle(color: Colors.blue[900]),
         ),
         backgroundColor: Colors.white,
@@ -49,15 +67,15 @@ class SeatLayoutPage extends StatelessWidget {
             ),
             child: Column(
               children: [
-                _buildAddressRow('From:', startAddress),
+                _buildAddressRow('From:', widget.startAddress),
                 SizedBox(height: 8),
-                _buildAddressRow('To:', destinationAddress),
+                _buildAddressRow('To:', widget.destinationAddress),
                 Divider(height: 16),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: [
-                    _buildDetail('Distance', distance),
-                    _buildDetail('Duration', duration),
+                    _buildDetail('Distance', widget.distance),
+                    _buildDetail('Duration', widget.duration),
                   ],
                 ),
               ],
@@ -92,7 +110,7 @@ class SeatLayoutPage extends StatelessWidget {
                   ),
                   SizedBox(height: 20),
                   Expanded(
-                    child: vehicleType == VehicleType.sedan
+                    child: widget.vehicleType == VehicleType.sedan
                         ? _buildSedanLayout()
                         : _buildSUVLayout(),
                   ),
@@ -104,25 +122,46 @@ class SeatLayoutPage extends StatelessWidget {
           // Continue button
           Container(
             padding: EdgeInsets.all(16),
-            child: ElevatedButton(
-              onPressed: () {
-                // TODO: Implement booking logic
-                print('Booking confirmed');
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue[700],
-                minimumSize: Size(double.infinity, 50),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+            child: Column(
+              children: [
+                Text(
+                  '${selectedSeats.length} seats selected',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.blue[900],
+                  ),
                 ),
-              ),
-              child: Text(
-                'Continue',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
+                SizedBox(height: 8),
+                ElevatedButton(
+                  onPressed: selectedSeats.isNotEmpty
+                      ? () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => PassengerDetailsPage(
+                                selectedSeats: selectedSeats,
+                              ),
+                            ),
+                          );
+                        }
+                      : null,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue[700],
+                    minimumSize: Size(double.infinity, 50),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: Text(
+                    'Continue',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 ),
-              ),
+              ],
             ),
           ),
         ],
@@ -138,9 +177,9 @@ class SeatLayoutPage extends StatelessWidget {
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            _buildSeat(isDriver: true),
+            _buildSeat(seatId: 'front_passenger'),
             SizedBox(width: 20),
-            _buildSeat(),
+            _buildSeat(seatId: 'driver', isDriver: true),
           ],
         ),
         SizedBox(height: 40),
@@ -148,9 +187,9 @@ class SeatLayoutPage extends StatelessWidget {
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            _buildSeat(),
+            _buildSeat(seatId: 'rear_left'),
             SizedBox(width: 20),
-            _buildSeat(),
+            _buildSeat(seatId: 'rear_right'),
           ],
         ),
       ],
@@ -165,9 +204,9 @@ class SeatLayoutPage extends StatelessWidget {
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            _buildSeat(isDriver: true),
+            _buildSeat(seatId: 'front_passenger'),
             SizedBox(width: 20),
-            _buildSeat(),
+            _buildSeat(seatId: 'driver', isDriver: true),
           ],
         ),
         SizedBox(height: 40),
@@ -175,9 +214,9 @@ class SeatLayoutPage extends StatelessWidget {
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            _buildSeat(),
+            _buildSeat(seatId: 'middle_left'),
             SizedBox(width: 20),
-            _buildSeat(),
+            _buildSeat(seatId: 'middle_right'),
           ],
         ),
         SizedBox(height: 40),
@@ -185,32 +224,49 @@ class SeatLayoutPage extends StatelessWidget {
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            _buildSeat(),
+            _buildSeat(seatId: 'rear_left'),
             SizedBox(width: 20),
-            _buildSeat(),
+            _buildSeat(seatId: 'rear_right'),
           ],
         ),
       ],
     );
   }
 
-  Widget _buildSeat({bool isDriver = false}) {
-    return Container(
-      width: 50,
-      height: 50,
-      decoration: BoxDecoration(
-        color: isDriver ? Colors.grey[300] : Colors.blue[100],
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: isDriver ? Colors.grey : Colors.blue,
-          width: 2,
+  Widget _buildSeat({required String seatId, bool isDriver = false}) {
+    final bool isSelected = selectedSeats.contains(seatId);
+    
+    return GestureDetector(
+      onTap: isDriver ? null : () => toggleSeat(seatId),
+      child: Container(
+        width: 50,
+        height: 50,
+        decoration: BoxDecoration(
+          color: isDriver 
+              ? Colors.grey[300]
+              : isSelected 
+                  ? Colors.blue[700]
+                  : Colors.blue[100],
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: isDriver 
+                ? Colors.grey
+                : isSelected 
+                    ? Colors.blue[900]!
+                    : Colors.blue,
+            width: 2,
+          ),
         ),
-      ),
-      child: Center(
-        child: Icon(
-          Icons.event_seat,
-          color: isDriver ? Colors.grey[600] : Colors.blue[700],
-          size: 30,
+        child: Center(
+          child: Icon(
+            Icons.event_seat,
+            color: isDriver 
+                ? Colors.grey[600]
+                : isSelected 
+                    ? Colors.white
+                    : Colors.blue[700],
+            size: 30,
+          ),
         ),
       ),
     );
