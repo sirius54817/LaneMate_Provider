@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'passenger_details_page.dart';
 
 enum VehicleType { sedan, suv }
@@ -9,6 +10,8 @@ class SeatLayoutPage extends StatefulWidget {
   final String destinationAddress;
   final String distance;
   final String duration;
+  final LatLng startPoint;
+  final LatLng destination;
 
   const SeatLayoutPage({
     Key? key,
@@ -17,6 +20,8 @@ class SeatLayoutPage extends StatefulWidget {
     required this.destinationAddress,
     required this.distance,
     required this.duration,
+    required this.startPoint,
+    required this.destination,
   }) : super(key: key);
 
   @override
@@ -141,6 +146,14 @@ class _SeatLayoutPageState extends State<SeatLayoutPage> {
                             MaterialPageRoute(
                               builder: (context) => PassengerDetailsPage(
                                 selectedSeats: selectedSeats,
+                                startAddress: widget.startAddress,
+                                destinationAddress: widget.destinationAddress,
+                                startPoint: widget.startPoint,
+                                destination: widget.destination,
+                                distance: widget.distance,
+                                vehicleType: widget.vehicleType == VehicleType.sedan 
+                                    ? '4seater' 
+                                    : '6seater',
                               ),
                             ),
                           );

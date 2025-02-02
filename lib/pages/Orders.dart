@@ -18,9 +18,20 @@ class RideOrder {
   final String status;
   final GeoPoint? pickupLocation;
   final GeoPoint? destinationLocation;
+  final String? riderId;
+  final String vehicleType;
+  final String? otp;
+  final DateTime? requestTime;
+  final DateTime? acceptTime;
+  final DateTime? startTime;
+  final DateTime? endTime;
+  final bool isCancelled;
+  final String? cancellationReason;
+  final double? convenienceFee;
+  final double? cancellationFee;
 
   RideOrder({
-    required this.orderId,
+    this.orderId = '',
     required this.userId,
     required this.pickup,
     required this.destination,
@@ -29,6 +40,17 @@ class RideOrder {
     required this.status,
     this.pickupLocation,
     this.destinationLocation,
+    this.riderId,
+    required this.vehicleType,
+    this.otp,
+    this.requestTime,
+    this.acceptTime,
+    this.startTime,
+    this.endTime,
+    this.isCancelled = false,
+    this.cancellationReason,
+    this.convenienceFee,
+    this.cancellationFee,
   });
 
   factory RideOrder.fromMap(Map<String, dynamic> map) {
@@ -42,7 +64,42 @@ class RideOrder {
       status: map['status'] ?? '',
       pickupLocation: map['pickup_location'] as GeoPoint?,
       destinationLocation: map['destination_location'] as GeoPoint?,
+      riderId: map['rider_id'],
+      vehicleType: map['vehicle_type'] ?? '4seater',
+      otp: map['otp'],
+      requestTime: (map['request_time'] as Timestamp?)?.toDate(),
+      acceptTime: (map['accept_time'] as Timestamp?)?.toDate(),
+      startTime: (map['start_time'] as Timestamp?)?.toDate(),
+      endTime: (map['end_time'] as Timestamp?)?.toDate(),
+      isCancelled: map['is_cancelled'] ?? false,
+      cancellationReason: map['cancellation_reason'],
+      convenienceFee: (map['convenience_fee'] ?? 0.0).toDouble(),
+      cancellationFee: (map['cancellation_fee'] ?? 0.0).toDouble(),
     );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'user_id': userId,
+      'pickup': pickup,
+      'destination': destination,
+      'distance': distance,
+      'calculatedPrice': price,
+      'status': status,
+      'pickup_location': pickupLocation,
+      'destination_location': destinationLocation,
+      'rider_id': riderId,
+      'vehicle_type': vehicleType,
+      'otp': otp,
+      'request_time': requestTime != null ? Timestamp.fromDate(requestTime!) : null,
+      'accept_time': acceptTime != null ? Timestamp.fromDate(acceptTime!) : null,
+      'start_time': startTime != null ? Timestamp.fromDate(startTime!) : null,
+      'end_time': endTime != null ? Timestamp.fromDate(endTime!) : null,
+      'is_cancelled': isCancelled,
+      'cancellation_reason': cancellationReason,
+      'convenience_fee': convenienceFee,
+      'cancellation_fee': cancellationFee,
+    };
   }
 }
 

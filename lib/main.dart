@@ -4,6 +4,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:ecub_delivery/services/location_manager.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -11,6 +12,13 @@ Future<void> main() async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   await Geolocator.requestPermission();
   await FirebaseStorage.instance;
+
+  // Initialize location manager
+  try {
+    await LocationManager().initialize();
+  } catch (e) {
+    debugPrint('Error initializing location manager: $e');
+  }
 
   runApp(const MyApp());
 }

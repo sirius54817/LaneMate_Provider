@@ -1,11 +1,29 @@
 import 'package:flutter/material.dart';
+import '../services/ride_service.dart';
+import '../pages/Orders.dart';
+import '../pages/ride_status.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 class PassengerDetailsPage extends StatefulWidget {
   final Set<String> selectedSeats;
+  final String startAddress;
+  final String destinationAddress;
+  final LatLng startPoint;
+  final LatLng destination;
+  final String distance;
+  final String vehicleType;
 
   const PassengerDetailsPage({
     Key? key,
     required this.selectedSeats,
+    required this.startAddress,
+    required this.destinationAddress,
+    required this.startPoint,
+    required this.destination,
+    required this.distance,
+    required this.vehicleType,
   }) : super(key: key);
 
   @override
@@ -15,6 +33,8 @@ class PassengerDetailsPage extends StatefulWidget {
 class _PassengerDetailsPageState extends State<PassengerDetailsPage> {
   final _formKey = GlobalKey<FormState>();
   final Map<String, Map<String, String>> passengerDetails = {};
+  final RideService _rideService = RideService();
+  bool _isCreatingOrder = false;
 
   @override
   void initState() {
@@ -26,6 +46,69 @@ class _PassengerDetailsPageState extends State<PassengerDetailsPage> {
         'age': '',
         'gender': 'Male',
       };
+    }
+  }
+
+  Future<void> _createRideOrder() async {
+    if (!_formKey.currentState!.validate()) return;
+    _formKey.currentState!.save();
+
+    setState(() => _isCreatingOrder = true);
+
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) throw 'User not authenticated';
+
+      final distance = double.parse(widget.distance.replaceAll(RegExp(r'[^0-9.]'), ''));
+      final price = RideService.calculatePrice(distance, widget.vehicleType);
+
+      final order = RideOrder(
+        userId: user.uid,
+        pickup: widget.startAddress,
+        destination: widget.destinationAddress,
+        distance: distance,
+        price: price.round(),
+        status: 'pending',
+        pickupLocation: GeoPoint(widget.startPoint.latitude, widget.startPoint.longitude),
+        destinationLocation: GeoPoint(widget.destination.latitude, widget.destination.longitude),
+        vehicleType: widget.vehicleType,
+        otp: RideService.generateOTP(),
+        requestTime: DateTime.now(),
+      );
+
+      // Create the ride order
+      final orderId = await _rideService.createRideOrder(order);
+
+      // Save passenger details
+      await FirebaseFirestore.instance
+          .collection('ride_orders')
+          .doc(orderId)
+          .collection('passengers')
+          .add({
+        'details': passengerDetails,
+        'seats': widget.selectedSeats.toList(),
+      });
+
+      if (mounted) {
+        // Navigate to ride status page
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(
+            builder: (context) => RideStatusPage(orderId: orderId),
+          ),
+          (route) => false, // Remove all previous routes
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to create ride: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isCreatingOrder = false);
+      }
     }
   }
 
@@ -58,13 +141,7 @@ class _PassengerDetailsPageState extends State<PassengerDetailsPage> {
             Container(
               padding: EdgeInsets.all(16),
               child: ElevatedButton(
-                onPressed: () {
-                  if (_formKey.currentState!.validate()) {
-                    _formKey.currentState!.save();
-                    // TODO: Implement booking confirmation
-                    print('Passenger details: $passengerDetails');
-                  }
-                },
+                onPressed: _isCreatingOrder ? null : _createRideOrder,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.blue[700],
                   minimumSize: Size(double.infinity, 50),
@@ -72,13 +149,22 @@ class _PassengerDetailsPageState extends State<PassengerDetailsPage> {
                     borderRadius: BorderRadius.circular(12),
                   ),
                 ),
-                child: Text(
-                  'Confirm Booking',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
+                child: _isCreatingOrder
+                    ? SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                        ),
+                      )
+                    : Text(
+                        'Confirm Booking',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
               ),
             ),
           ],

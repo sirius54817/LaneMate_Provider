@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:ecub_delivery/pages/seat_layout.dart';
+import '../services/ride_service.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import '../pages/Orders.dart';
+import 'package:ecub_delivery/pages/ride_status.dart';
 
-class VehicleSelectionPage extends StatelessWidget {
+class VehicleSelectionPage extends StatefulWidget {
   final LatLng startPoint;
   final LatLng destination;
   final String startAddress;
@@ -19,6 +24,62 @@ class VehicleSelectionPage extends StatelessWidget {
     required this.distance,
     required this.duration,
   }) : super(key: key);
+
+  @override
+  State<VehicleSelectionPage> createState() => _VehicleSelectionPageState();
+}
+
+class _VehicleSelectionPageState extends State<VehicleSelectionPage> {
+  final RideService _rideService = RideService();
+  String _selectedVehicle = '4seater';
+  bool _isCreatingOrder = false;
+
+  Future<void> _createRideOrder() async {
+    setState(() => _isCreatingOrder = true);
+    
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) throw 'User not authenticated';
+
+      final distance = double.parse(widget.distance.replaceAll(RegExp(r'[^0-9.]'), ''));
+      final price = RideService.calculatePrice(distance, _selectedVehicle);
+      
+      final order = RideOrder(
+        userId: user.uid,
+        pickup: widget.startAddress,
+        destination: widget.destinationAddress,
+        distance: distance,
+        price: price.round(),
+        status: 'pending',
+        pickupLocation: GeoPoint(widget.startPoint.latitude, widget.startPoint.longitude),
+        destinationLocation: GeoPoint(widget.destination.latitude, widget.destination.longitude),
+        vehicleType: _selectedVehicle,
+        otp: RideService.generateOTP(),
+        requestTime: DateTime.now(),
+      );
+
+      final orderId = await _rideService.createRideOrder(order);
+      
+      if (mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => RideStatusPage(orderId: orderId),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to create ride: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isCreatingOrder = false);
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -51,7 +112,7 @@ class VehicleSelectionPage extends StatelessWidget {
                 _buildLocationRow(
                   Icons.my_location,
                   'Start',
-                  startAddress,
+                  widget.startAddress,
                   Colors.blue[700]!,
                 ),
                 SizedBox(height: 8),
@@ -67,15 +128,15 @@ class VehicleSelectionPage extends StatelessWidget {
                 _buildLocationRow(
                   Icons.location_on,
                   'Destination',
-                  destinationAddress,
+                  widget.destinationAddress,
                   Colors.red[700]!,
                 ),
                 Divider(height: 24),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: [
-                    _buildTripDetail(Icons.timeline, distance, 'Distance'),
-                    _buildTripDetail(Icons.access_time, duration, 'Duration'),
+                    _buildTripDetail(Icons.timeline, widget.distance, 'Distance'),
+                    _buildTripDetail(Icons.access_time, widget.duration, 'Duration'),
                   ],
                 ),
               ],
@@ -194,10 +255,12 @@ class VehicleSelectionPage extends StatelessWidget {
           MaterialPageRoute(
             builder: (context) => SeatLayoutPage(
               vehicleType: title == 'Sedan' ? VehicleType.sedan : VehicleType.suv,
-              startAddress: startAddress,
-              destinationAddress: destinationAddress,
-              distance: distance,
-              duration: duration,
+              startAddress: widget.startAddress,
+              destinationAddress: widget.destinationAddress,
+              distance: widget.distance,
+              duration: widget.duration,
+              startPoint: widget.startPoint,
+              destination: widget.destination,
             ),
           ),
         );
