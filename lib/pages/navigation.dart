@@ -3,11 +3,13 @@ import 'package:ecub_delivery/pages/home.dart';
 import 'package:ecub_delivery/pages/Orders.dart';
 import 'package:ecub_delivery/pages/Earnings.dart';
 import 'package:ecub_delivery/pages/profile.dart';
+import 'package:ecub_delivery/pages/passenger_orders.dart';
 import 'dart:async';
 import 'package:location/location.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:logger/logger.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 final logger = Logger();
 
@@ -23,21 +25,72 @@ class _MainNavigationState extends State<MainNavigation> {
   late int _selectedIndex;
   Timer? _locationUpdateTimer;
   final Location _location = Location();
-  bool _isUpdatingLocation = false;  // Add this flag
+  bool _isUpdatingLocation = false;
+  bool _isGivingRide = false;
+  bool _isInitialized = false;
   
-  final List<Widget> _pages = [
-    HomeScreen(),
-    OrdersPage(),
-    EarningsPage(),
-    ProfilePage(),
-  ];
-
   @override
   void initState() {
     super.initState();
     _selectedIndex = widget.initialIndex;
-    _initializeLocation();
+    _initialize();
+    _setupRideModeListener();
   }
+
+  Future<void> _initialize() async {
+    await Future.wait([
+      _initializeLocation(),
+      _loadRideMode(),
+    ]);
+  }
+
+  Future<void> _loadRideMode() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (mounted) {
+        setState(() {
+          _isGivingRide = prefs.getString('ride_mode') == 'give' || 
+                         prefs.getInt('ride_mode') == RideMode.give.index;
+          _isInitialized = true;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading ride mode: $e');
+      if (mounted) {
+        setState(() {
+          _isGivingRide = false;
+          _isInitialized = true;
+        });
+      }
+    }
+  }
+
+  void _setupRideModeListener() {
+    Timer.periodic(Duration(seconds: 1), (timer) async {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      
+      final prefs = await SharedPreferences.getInstance();
+      final newIsGivingRide = prefs.getString('ride_mode') == 'give';
+      
+      if (newIsGivingRide != _isGivingRide) {
+        setState(() {
+          _isGivingRide = newIsGivingRide;
+        });
+      }
+    });
+  }
+
+  List<Widget> get _pages => [
+    HomeScreen(),
+    _isGivingRide 
+        ? OrdersPage(isGivingRide: true)  // Driver's view
+        : OrdersPage(isGivingRide: false),          // Passenger's view
+    EarningsPage(),
+    ProfilePage(),
+  ];
 
   Future<void> _initializeLocation() async {
     try {
@@ -280,6 +333,31 @@ class _MainNavigationState extends State<MainNavigation> {
 
   @override
   Widget build(BuildContext context) {
+    if (!_isInitialized) {
+      return MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                CircularProgressIndicator(
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.green),
+                ),
+                SizedBox(height: 16),
+                Text(
+                  'Loading...',
+                  style: TextStyle(
+                    color: Colors.grey[600],
+                    fontSize: 16,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     return WillPopScope(
       onWillPop: () async {
         if (_selectedIndex != 0) {

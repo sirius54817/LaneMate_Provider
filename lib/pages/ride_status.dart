@@ -117,6 +117,30 @@ class _RideStatusPageState extends State<RideStatusPage> {
     }
   }
 
+  Future<void> _retryBooking() async {
+    try {
+      final success = await _rideService.retryBooking(widget.orderId);
+      
+      if (mounted) {
+        if (success) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Booking retried successfully!')),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Failed to retry booking. Please try again.')),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error retrying booking: $e')),
+        );
+      }
+    }
+  }
+
   void _showOTPDialog(String orderId) {
     showDialog(
       context: context,
@@ -237,6 +261,25 @@ class _RideStatusPageState extends State<RideStatusPage> {
                         ),
                         child: Text('Enter OTP to Start Ride'),
                       ),
+                    if (status == 'expired')
+                      ElevatedButton(
+                        onPressed: _retryBooking,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blue[700],
+                          padding: EdgeInsets.symmetric(vertical: 12),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.refresh, color: Colors.white),
+                            SizedBox(width: 8),
+                            Text(
+                              'Retry Booking', 
+                              style: TextStyle(color: Colors.white),
+                            ),
+                          ],
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -276,6 +319,16 @@ class _RideStatusPageState extends State<RideStatusPage> {
       case 'cancelled':
         color = Colors.red;
         message = 'Ride cancelled';
+        icon = Icons.cancel;
+        break;
+    case 'rejected':
+        color = Colors.red;
+        message = 'Ride rejected';
+        icon = Icons.cancel;
+        break;
+    case 'expired':
+        color = Colors.orange;
+        message = 'Ride expired';
         icon = Icons.cancel;
         break;
       default:

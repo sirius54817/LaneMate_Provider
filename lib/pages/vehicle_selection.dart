@@ -88,7 +88,6 @@ class _VehicleSelectionPageState extends State<VehicleSelectionPage> {
         title: Text('Select Vehicle'),
         backgroundColor: Colors.white,
         foregroundColor: Colors.blue[900],
-        elevation: 0,
       ),
       body: Column(
         children: [
@@ -109,75 +108,57 @@ class _VehicleSelectionPageState extends State<VehicleSelectionPage> {
             ),
             child: Column(
               children: [
-                _buildLocationRow(
-                  Icons.my_location,
-                  'Start',
-                  widget.startAddress,
-                  Colors.blue[700]!,
-                ),
-                SizedBox(height: 8),
-                Padding(
-                  padding: EdgeInsets.only(left: 12),
-                  child: Container(
-                    height: 30,
-                    width: 2,
-                    color: Colors.grey[300],
-                  ),
-                ),
-                SizedBox(height: 8),
-                _buildLocationRow(
-                  Icons.location_on,
-                  'Destination',
-                  widget.destinationAddress,
-                  Colors.red[700]!,
-                ),
+                _buildAddressRow(Icons.location_on, 'From', widget.startAddress),
+                SizedBox(height: 12),
+                _buildAddressRow(Icons.location_on, 'To', widget.destinationAddress),
                 Divider(height: 24),
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
-                    _buildTripDetail(Icons.timeline, widget.distance, 'Distance'),
-                    _buildTripDetail(Icons.access_time, widget.duration, 'Duration'),
+                    _buildTripDetail(
+                      Icons.timeline,
+                      widget.distance,
+                      'Distance',
+                    ),
+                    Container(
+                      height: 30,
+                      width: 1,
+                      color: Colors.grey[300],
+                    ),
+                    _buildTripDetail(
+                      Icons.access_time,
+                      widget.duration,
+                      'Duration',
+                    ),
                   ],
                 ),
               ],
             ),
           ),
-          
-          // Vehicle Selection Cards
+
+          // Vehicle Options
           Expanded(
-            child: Container(
+            child: ListView(
               padding: EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(
-                    'Select Vehicle Type',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.blue[900],
-                    ),
-                  ),
-                  SizedBox(height: 16),
-                  _buildVehicleCard(
-                    context,
-                    'Sedan',
-                    '4 Seats',
-                    'Comfortable ride for up to 4 passengers',
-                    'assets/sedan.png',
-                    Colors.blue[50]!,
-                  ),
-                  SizedBox(height: 16),
-                  _buildVehicleCard(
-                    context,
-                    'SUV',
-                    '6 Seats',
-                    'Spacious ride for up to 6 passengers',
-                    'assets/suv.png',
-                    Colors.green[50]!,
-                  ),
-                ],
-              ),
+              children: [
+                _buildVehicleCard(
+                  context,
+                  'Sedan',
+                  '4 Seats',
+                  'Comfortable ride for up to 4 passengers',
+                  'assets/images/sedan.png',
+                  Colors.white,
+                ),
+                SizedBox(height: 16),
+                _buildVehicleCard(
+                  context,
+                  'SUV',
+                  '6 Seats',
+                  'Spacious ride for up to 6 passengers',
+                  'assets/images/suv.png',
+                  Colors.white,
+                ),
+              ],
             ),
           ),
         ],
@@ -185,17 +166,18 @@ class _VehicleSelectionPageState extends State<VehicleSelectionPage> {
     );
   }
 
-  Widget _buildLocationRow(IconData icon, String title, String address, Color color) {
+  Widget _buildAddressRow(IconData icon, String label, String address) {
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(icon, color: color),
+        Icon(icon, color: Colors.blue[700], size: 20),
         SizedBox(width: 12),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                title,
+                label,
                 style: TextStyle(
                   color: Colors.grey[600],
                   fontSize: 12,
@@ -207,8 +189,6 @@ class _VehicleSelectionPageState extends State<VehicleSelectionPage> {
                   fontWeight: FontWeight.w500,
                   color: Colors.black87,
                 ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
               ),
             ],
           ),

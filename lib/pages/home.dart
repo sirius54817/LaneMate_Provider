@@ -682,32 +682,44 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   }
 
   Future<void> _saveMode(RideMode mode) async {
+    logger.i('Attempting to switch ride mode to: ${mode.toString()}');
+
     if (mode == RideMode.give) {
       final userId = FirebaseAuth.instance.currentUser?.uid;
-      if (userId == null) return;
+      if (userId == null) {
+        logger.w('Cannot switch to give mode: No authenticated user');
+        return;
+      }
 
       try {
+        logger.d('Checking ride provider status for user: $userId');
         final userDoc = await FirebaseFirestore.instance
             .collection('users')
             .doc(userId)
             .get();
         
         final isRideProvider = userDoc.data()?['isRideProvider'] ?? false;
+        logger.d('User ride provider status: $isRideProvider');
         
         if (!isRideProvider) {
+          logger.i('User is not a ride provider, showing welcome dialog');
           final accepted = await _showWelcomeDialog();
           if (!accepted) {
+            logger.i('User declined to become ride provider');
             _currentMode = RideMode.take;
             return;
           }
+          logger.i('User accepted to become ride provider');
         }
 
+        logger.d('Checking driver verification documents');
         final verificationDoc = await FirebaseFirestore.instance
             .collection('driver_verifications')
             .doc(userId)
             .get();
 
         if (!verificationDoc.exists) {
+          logger.w('No verification documents found for user');
           _showVerificationAlert(
             'Driver Verification Required',
             'Please submit your documents in the profile page to start giving rides.',
@@ -717,6 +729,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         }
 
         final data = verificationDoc.data()!;
+        logger.d('Verification status: ${data.toString()}');
         final submissionStatus = data['submissionStatus'] as String?;
         final isLicenseValid = data['isLicenseValid'] as bool? ?? false;
         final isPanValid = data['isPanValid'] as bool? ?? false;
@@ -761,8 +774,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           }
           return;
         }
-      } catch (e) {
-        print('Error checking status: $e');
+      } catch (e, stackTrace) {
+        logger.e('Error checking driver status', error: e, stackTrace: stackTrace);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Error checking status. Please try again.'),
@@ -774,11 +787,26 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     }
 
     // If all checks pass or if switching to take ride mode
-    final SharedPreferences prefs = await SharedPreferences.getInstance();
-    await prefs.setInt('ride_mode', mode.index);
-    setState(() {
-      _currentMode = mode;
-    });
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('ride_mode', mode.index);
+      await prefs.setString('ride_mode', mode == RideMode.give ? 'give' : 'take');
+      
+      logger.i('Successfully switched ride mode to: ${mode.toString()}');
+      logger.d('Saved preferences - mode.index: ${mode.index}, mode string: ${mode == RideMode.give ? 'give' : 'take'}');
+
+      setState(() {
+        _currentMode = mode;
+      });
+    } catch (e, stackTrace) {
+      logger.e('Error saving ride mode preferences', error: e, stackTrace: stackTrace);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error saving ride mode. Please try again.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   void _showVerificationAlert(String title, String message, String buttonText) {

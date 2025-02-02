@@ -13,6 +13,7 @@ class RideService {
   static const CONVENIENCE_FEE_PERCENTAGE = 0.03;
   static const CANCELLATION_FEE = 1.0;
   static const SIXSEATER_DISCOUNT_PER_KM = 3.0;
+  static const ORDER_EXPIRY_MINUTES = 5;
   
   final LocationManager _locationManager = LocationManager();
 
@@ -39,8 +40,8 @@ class RideService {
           .collection('ride_orders')
           .add(order.toMap());
       
-      // Start timer for 3-minute expiration
-      Future.delayed(Duration(minutes: 3), () async {
+      // Start timer for 5-minute expiration
+      Future.delayed(Duration(minutes: ORDER_EXPIRY_MINUTES), () async {
         final doc = await docRef.get();
         if (doc.exists && doc.data()?['status'] == 'pending') {
           await docRef.update({
@@ -213,6 +214,39 @@ class RideService {
       return true;
     } catch (e) {
       print('Error completing ride: $e');
+      return false;
+    }
+  }
+
+  // Add retry booking method
+  Future<bool> retryBooking(String orderId) async {
+    try {
+      await FirebaseFirestore.instance
+          .collection('ride_orders')
+          .doc(orderId)
+          .update({
+        'status': 'pending',
+        'request_time': FieldValue.serverTimestamp(),
+      });
+
+      // Start new expiry timer
+      Future.delayed(Duration(minutes: ORDER_EXPIRY_MINUTES), () async {
+        final doc = await FirebaseFirestore.instance
+            .collection('ride_orders')
+            .doc(orderId)
+            .get();
+            
+        if (doc.exists && doc.data()?['status'] == 'pending') {
+          await doc.reference.update({
+            'status': 'expired',
+            'expiry_time': FieldValue.serverTimestamp(),
+          });
+        }
+      });
+
+      return true;
+    } catch (e) {
+      print('Error retrying booking: $e');
       return false;
     }
   }

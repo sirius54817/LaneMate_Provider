@@ -4,13 +4,15 @@ import 'package:flutter/material.dart';
 import 'package:ecub_delivery/utils/map_utils.dart';
 
 class RideMap extends StatefulWidget {
-  final GeoPoint startLocation;
-  final GeoPoint endLocation;
+  final GeoPoint? startLocation;
+  final GeoPoint? endLocation;
+  final bool showFullRoute;
 
   const RideMap({
     Key? key,
-    required this.startLocation,
-    required this.endLocation,
+    this.startLocation,
+    this.endLocation,
+    this.showFullRoute = false,
   }) : super(key: key);
 
   @override
@@ -29,8 +31,8 @@ class _RideMapState extends State<RideMap> {
 
   Future<void> _drawRoute() async {
     final points = await getPolylinePoints(
-      LatLng(widget.startLocation.latitude, widget.startLocation.longitude),
-      LatLng(widget.endLocation.latitude, widget.endLocation.longitude),
+      LatLng(widget.startLocation!.latitude, widget.startLocation!.longitude),
+      LatLng(widget.endLocation!.latitude, widget.endLocation!.longitude),
     );
 
     setState(() {
@@ -50,8 +52,8 @@ class _RideMapState extends State<RideMap> {
     return GoogleMap(
       initialCameraPosition: CameraPosition(
         target: LatLng(
-          widget.startLocation.latitude,
-          widget.startLocation.longitude,
+          widget.startLocation!.latitude,
+          widget.startLocation!.longitude,
         ),
         zoom: 12,
       ),
@@ -59,16 +61,16 @@ class _RideMapState extends State<RideMap> {
         Marker(
           markerId: MarkerId('start'),
           position: LatLng(
-            widget.startLocation.latitude,
-            widget.startLocation.longitude,
+            widget.startLocation!.latitude,
+            widget.startLocation!.longitude,
           ),
           icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
         ),
         Marker(
           markerId: MarkerId('end'),
           position: LatLng(
-            widget.endLocation.latitude,
-            widget.endLocation.longitude,
+            widget.endLocation!.latitude,
+            widget.endLocation!.longitude,
           ),
           icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
         ),
