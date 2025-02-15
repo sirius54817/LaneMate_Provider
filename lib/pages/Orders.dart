@@ -8,6 +8,8 @@ import 'package:intl/intl.dart';
 import 'package:ecub_delivery/widgets/ride_map.dart';
 import 'package:ecub_delivery/services/location_service.dart';
 import 'package:flutter/services.dart';
+import 'package:ecub_delivery/services/ride_service.dart';
+import 'package:ecub_delivery/pages/ride_status.dart';
 
 class RideOrder {
   final String orderId;
@@ -119,14 +121,18 @@ class _OrdersPageState extends State<OrdersPage> {
   List<Map<String, dynamic>> _orders = [];
   bool _isLoading = true;
   int _selectedIndex = 0;
-  bool _isGivingRide = false; // To track if user is in "Give a Ride" mode
+  bool _isGivingRide = false;
   final locationService = LocationService();
+  final _completionOtpController = TextEditingController();
+  bool _isVerifying = false;
+  Stream<QuerySnapshot> _ordersStream = const Stream.empty();
+  final _rideService = RideService();
 
   @override
   void initState() {
     super.initState();
     _checkRideMode();
-    _fetchOrders();
+    _initializeOrdersStream();
   }
 
   Future<void> _checkRideMode() async {
@@ -136,109 +142,56 @@ class _OrdersPageState extends State<OrdersPage> {
     });
   }
 
-  Future<void> _fetchOrders() async {
-    try {
-      setState(() => _isLoading = true);
+  void _initializeOrdersStream() {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
 
-      final currentUser = FirebaseAuth.instance.currentUser;
-      if (currentUser == null) throw 'No authenticated user found';
+    Query query = FirebaseFirestore.instance.collection('ride_orders');
 
-      Query ordersQuery = FirebaseFirestore.instance.collection('ride_orders');
-
-      // Handle different query cases
-      if (widget.isGivingRide) {
-        switch (_selectedIndex) {
-          case 0: // Available rides
-            ordersQuery = ordersQuery
-              .where('status', isEqualTo: 'pending')
-              .where('rider_id', isNull: true); // Only show unassigned rides
-            break;
-            
-          case 1: // Accepted rides
-            ordersQuery = ordersQuery
-              .where('rider_id', isEqualTo: currentUser.uid)
-              .where('status', whereIn: ['accepted', 'in_transit']);
-            break;
-            
-          case 2: // Completed rides
-            ordersQuery = ordersQuery
-              .where('rider_id', isEqualTo: currentUser.uid)
-              .where('status', isEqualTo: 'completed');
-            break;
-        }
-      } else {
-        // Passenger view
-        ordersQuery = ordersQuery
-          .where('user_id', isEqualTo: currentUser.uid)
-          .where('status', isEqualTo: _selectedIndex == 0 ? 'in_transit' : 'completed');
+    if (widget.isGivingRide) {
+      switch (_selectedIndex) {
+        case 0: // Available rides
+          query = query
+            .where('status', isEqualTo: 'pending')
+            .where('rider_id', isNull: true);
+          break;
+        case 1: // Accepted rides
+          query = query
+            .where('rider_id', isEqualTo: user.uid)
+            .where('status', whereIn: ['accepted', 'in_transit']);
+          break;
+        case 2: // Completed rides
+          query = query
+            .where('rider_id', isEqualTo: user.uid)
+            .where('status', isEqualTo: 'completed');
+          break;
       }
-
-      logger.d('Fetching orders with query: ${ordersQuery.parameters}');
-      final QuerySnapshot ordersSnapshot = await ordersQuery.get();
-      List<Map<String, dynamic>> orders = [];
-      
-      for (var doc in ordersSnapshot.docs) {
-        Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
-        data['docId'] = doc.id;
-        
-        // Calculate statistics for completed rides
-        if (data['status'] == 'completed') {
-          final startTime = (data['start_time'] as Timestamp?)?.toDate();
-          final endTime = (data['end_time'] as Timestamp?)?.toDate();
-          
-          if (startTime != null && endTime != null) {
-            final duration = endTime.difference(startTime);
-            data['duration'] = duration.inMinutes;
-          }
-        }
-        
-        orders.add(data);
-      }
-
-      if (mounted) {
-        setState(() {
-          _orders = orders;
-          _isLoading = false;
-        });
-      }
-    } catch (e, stackTrace) {
-      logger.e('Error fetching orders', error: e, stackTrace: stackTrace);
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-          _orders = [];
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to fetch orders: $e')),
-        );
-      }
+    } else {
+      // Passenger view
+      query = query
+        .where('user_id', isEqualTo: user.uid)
+        .where('status', isEqualTo: _selectedIndex == 0 ? 'in_transit' : 'completed');
     }
+
+    query = query.orderBy('request_time', descending: true);
+
+    setState(() {
+      _ordersStream = query.snapshots();
+    });
   }
 
-  void _showRideDetails(Map<String, dynamic> order) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => RideDetailsSheet(
-        order: order,
-        isDriver: widget.isGivingRide,
-      ),
-    );
+  void _onTabSelected(int index) {
+    setState(() {
+      _selectedIndex = index;
+      _initializeOrdersStream();
+    });
   }
 
   Widget _buildTabButton(int index, String label, IconData icon) {
     bool isSelected = _selectedIndex == index;
     return Expanded(
       child: GestureDetector(
-        onTap: () {
-          if (_selectedIndex != index) {
-            setState(() {
-              _selectedIndex = index;
-              _fetchOrders();
-            });
-          }
-        },
+        onTap: () => _onTabSelected(index),
         child: Container(
           margin: EdgeInsets.all(8),
           decoration: BoxDecoration(
@@ -332,6 +285,12 @@ class _OrdersPageState extends State<OrdersPage> {
             ),
           ),
         ),
+        actions: [
+          IconButton(
+            icon: Icon(Icons.refresh),
+            onPressed: _initializeOrdersStream,
+          ),
+        ],
       ),
       body: _isLoading
           ? Center(child: CircularProgressIndicator(
@@ -368,12 +327,64 @@ class _OrdersPageState extends State<OrdersPage> {
                     ],
                   ),
                 )
-              : ListView.builder(
-                  padding: EdgeInsets.all(16),
-                  itemCount: _orders.length,
-                  itemBuilder: (context, index) {
-                    final order = _orders[index];
-                    return _buildOrderCard(order);
+              : StreamBuilder<QuerySnapshot>(
+                  stream: _ordersStream,
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return Center(child: CircularProgressIndicator());
+                    }
+
+                    if (snapshot.hasError) {
+                      return Center(child: Text('Error: ${snapshot.error}'));
+                    }
+
+                    if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                      return Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              widget.isGivingRide
+                                ? _selectedIndex == 0 
+                                  ? Icons.local_taxi
+                                  : _selectedIndex == 1 
+                                    ? Icons.directions_car 
+                                    : Icons.check_circle
+                                : _selectedIndex == 0
+                                  ? Icons.directions_car
+                                  : Icons.check_circle,
+                              size: 64,
+                              color: Colors.blue[200],
+                            ),
+                            SizedBox(height: 16),
+                            Text(
+                              widget.isGivingRide
+                                ? 'No ${_selectedIndex == 0 ? "available" : _selectedIndex == 1 ? "accepted" : "completed"} rides'
+                                : 'No ${_selectedIndex == 0 ? "current" : "completed"} rides',
+                              style: TextStyle(
+                                color: Colors.blue[900],
+                                fontSize: 16,
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }
+
+                    final orders = snapshot.data!.docs.map((doc) {
+                      final data = doc.data() as Map<String, dynamic>;
+                      data['docId'] = doc.id;
+                      return data;
+                    }).toList();
+
+                    return ListView.builder(
+                      padding: EdgeInsets.all(16),
+                      itemCount: orders.length,
+                      itemBuilder: (context, index) {
+                        final order = orders[index];
+                        return _buildOrderCard(order);
+                      },
+                    );
                   },
                 ),
     );
@@ -399,151 +410,175 @@ class _OrdersPageState extends State<OrdersPage> {
       return 'Pending';
     }
 
-    return Card(
-      margin: EdgeInsets.only(bottom: 12),
-      elevation: 2,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.centerLeft,
-            end: Alignment.centerRight,
-            colors: [
-              Colors.white,
-              Colors.blue[50]!.withOpacity(0.3),
-            ],
-          ),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Column(
-          children: [
-            ListTile(
-              contentPadding: EdgeInsets.all(16),
-              leading: Container(
-                padding: EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.blue[50],
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(
-                  isCompleted ? Icons.check_circle : 
-                  isInTransit ? Icons.directions_car :
-                  isAccepted ? Icons.access_time :
-                  Icons.local_taxi,
-                  color: Colors.blue[700],
-                ),
-              ),
-              title: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      'Ride to ${order['destination'] ?? 'Unknown'}',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.blue[900],
-                      ),
-                    ),
-                  ),
-                  Container(
-                    padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: getStatusColor().withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: getStatusColor().withOpacity(0.5),
-                        width: 1,
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          width: 8,
-                          height: 8,
-                          decoration: BoxDecoration(
-                            color: getStatusColor(),
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                        SizedBox(width: 6),
-                        Text(
-                          getStatusText(),
-                          style: TextStyle(
-                            color: getStatusColor(),
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              subtitle: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  SizedBox(height: 8),
-                  if (widget.isGivingRide)
-                    Text(
-                      'Earnings: ₹${order['calculatedPrice']}',
-                      style: TextStyle(
-                        fontSize: 15,
-                        color: Colors.blue[900],
-                        fontWeight: FontWeight.w500,
-                      ),
-                    )
-                  else
-                    Text(
-                      'Cost: ₹${order['calculatedPrice']}',
-                      style: TextStyle(
-                        fontSize: 15,
-                        color: Colors.blue[900],
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  SizedBox(height: 4),
-                  Text(
-                    'Distance: ${order['distance']?.toStringAsFixed(1)} km',
-                    style: TextStyle(color: Colors.grey[600]),
-                  ),
-                  if (isCompleted && order['duration'] != null)
-                    Text(
-                      'Duration: ${order['duration']} mins',
-                      style: TextStyle(color: Colors.grey[600]),
-                    ),
-                ],
-              ),
-              trailing: Icon(
-                Icons.arrow_forward_ios,
-                color: Colors.blue[700],
-                size: 20,
-              ),
-              onTap: () => _showRideDetails(order),
+    return GestureDetector(
+      onTap: () {
+        if (!widget.isGivingRide && _selectedIndex == 0) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => RideStatusPage(orderId: order['docId']),
             ),
-            if (isPending && widget.isGivingRide)
-              Padding(
-                padding: EdgeInsets.only(bottom: 16, left: 16, right: 16),
-                child: ElevatedButton(
-                  onPressed: () => _acceptRide(order),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green[600],
-                    minimumSize: Size(double.infinity, 45),
-                    shape: RoundedRectangleBorder(
+          );
+        } else {
+          _showRideDetails(order);
+        }
+      },
+      child: Card(
+        margin: EdgeInsets.only(bottom: 16),
+        elevation: 2,
+        child: InkWell(
+          onTap: () {
+            if (!widget.isGivingRide && _selectedIndex == 0) {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => RideStatusPage(orderId: order['docId']),
+                ),
+              );
+            } else {
+              _showRideDetails(order);
+            }
+          },
+          borderRadius: BorderRadius.circular(12),
+          child: Padding(
+            padding: EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                ListTile(
+                  contentPadding: EdgeInsets.all(16),
+                  leading: Container(
+                    padding: EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.blue[50],
                       borderRadius: BorderRadius.circular(8),
                     ),
-                  ),
-                  child: Text(
-                    'Accept Ride',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
+                    child: Icon(
+                      isCompleted ? Icons.check_circle : 
+                      isInTransit ? Icons.directions_car :
+                      isAccepted ? Icons.access_time :
+                      Icons.local_taxi,
+                      color: Colors.blue[700],
                     ),
                   ),
+                  title: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'Ride to ${order['destination'] ?? 'Unknown'}',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: Colors.blue[900],
+                          ),
+                        ),
+                      ),
+                      Container(
+                        padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: getStatusColor().withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: getStatusColor().withOpacity(0.5),
+                            width: 1,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              width: 8,
+                              height: 8,
+                              decoration: BoxDecoration(
+                                color: getStatusColor(),
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            SizedBox(width: 6),
+                            Text(
+                              getStatusText(),
+                              style: TextStyle(
+                                color: getStatusColor(),
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(height: 8),
+                      if (widget.isGivingRide)
+                        Text(
+                          'Earnings: ₹${order['calculatedPrice']}',
+                          style: TextStyle(
+                            fontSize: 15,
+                            color: Colors.blue[900],
+                            fontWeight: FontWeight.w500,
+                          ),
+                        )
+                      else
+                        Text(
+                          'Cost: ₹${order['calculatedPrice']}',
+                          style: TextStyle(
+                            fontSize: 15,
+                            color: Colors.blue[900],
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      SizedBox(height: 4),
+                      Text(
+                        'Distance: ${order['distance']?.toStringAsFixed(1)} km',
+                        style: TextStyle(color: Colors.grey[600]),
+                      ),
+                      if (isCompleted && order['duration'] != null)
+                        Text(
+                          'Duration: ${order['duration']} mins',
+                          style: TextStyle(color: Colors.grey[600]),
+                        ),
+                    ],
+                  ),
+                  trailing: Icon(
+                    Icons.arrow_forward_ios,
+                    color: Colors.blue[700],
+                    size: 20,
+                  ),
                 ),
-              ),
-          ],
+                if (isPending && widget.isGivingRide)
+                  Padding(
+                    padding: EdgeInsets.only(bottom: 16, left: 16, right: 16),
+                    child: ElevatedButton(
+                      onPressed: () => _acceptRide(order),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green[600],
+                        minimumSize: Size(double.infinity, 45),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      child: Text(
+                        'Accept Ride',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+                if (isInTransit && widget.isGivingRide)
+                  Padding(
+                    padding: EdgeInsets.only(top: 16),
+                    child: ElevatedButton(
+                      onPressed: () => _showCompletionOTPDialog(order['docId']),
+                      child: Text('Complete Ride'),
+                    ),
+                  ),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -589,7 +624,21 @@ class _OrdersPageState extends State<OrdersPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Ride accepted successfully!')),
         );
-        _fetchOrders(); // Refresh the list
+        _initializeOrdersStream(); // Refresh the list
+
+        // Start location streaming after successful acceptance
+        _rideService.streamDriverLocation(currentUser.uid).listen(
+          (location) {
+            // Location updates are being sent to Firebase
+            debugPrint('Location updated: ${location.latitude}, ${location.longitude}');
+          },
+          onError: (error) {
+            logger.e('Error streaming location', error: error);
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Error updating location: $error')),
+            );
+          },
+        );
       }
     } catch (e, stackTrace) {
       logger.e('Error accepting ride', error: e, stackTrace: stackTrace);
@@ -599,6 +648,98 @@ class _OrdersPageState extends State<OrdersPage> {
         );
       }
     }
+  }
+
+  Future<void> _verifyCompletionOTP(String orderId, String enteredOTP) async {
+    if (_isVerifying) return;
+
+    setState(() => _isVerifying = true);
+
+    try {
+      final success = await RideService().completeRide(orderId, enteredOTP);
+      
+      if (mounted) {
+        if (success) {
+          Navigator.pop(context); // Close OTP dialog
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Ride completed successfully!')),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Invalid completion OTP')),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error completing ride: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isVerifying = false);
+      }
+    }
+  }
+
+  void _showCompletionOTPDialog(String orderId) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: Text('Enter Completion OTP'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Ask passenger for the completion OTP to end the ride',
+              style: TextStyle(color: Colors.grey[600]),
+            ),
+            SizedBox(height: 16),
+            TextField(
+              controller: _completionOtpController,
+              keyboardType: TextInputType.number,
+              maxLength: 6,
+              decoration: InputDecoration(
+                hintText: 'Enter 6-digit OTP',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: _isVerifying 
+                ? null 
+                : () => _verifyCompletionOTP(orderId, _completionOtpController.text),
+            child: _isVerifying
+                ? SizedBox(
+                    height: 20,
+                    width: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : Text('Complete Ride'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showRideDetails(Map<String, dynamic> order) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => RideDetailsSheet(
+        order: order,
+        isDriver: widget.isGivingRide,
+      ),
+    );
   }
 }
 
@@ -876,11 +1017,20 @@ class _RideDetailsSheetState extends State<RideDetailsSheet> {
                       child: Column(
                         children: [
                           Text(
-                            'Enter OTP to Start Ride',
+                            'Ask passenger for OTP',
                             style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
                             ),
+                          ),
+                          SizedBox(height: 8),
+                          Text(
+                            'Verify the OTP provided by the passenger to start the ride',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey[600],
+                            ),
+                            textAlign: TextAlign.center,
                           ),
                           SizedBox(height: 16),
                           TextField(
@@ -894,7 +1044,7 @@ class _RideDetailsSheetState extends State<RideDetailsSheet> {
                               fontWeight: FontWeight.bold,
                             ),
                             decoration: InputDecoration(
-                              hintText: '6-digit OTP',
+                              hintText: 'Enter OTP',
                               border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(12),
                               ),

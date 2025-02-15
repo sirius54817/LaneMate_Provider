@@ -59,7 +59,16 @@ class _PassengerDetailsPageState extends State<PassengerDetailsPage> {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) throw 'User not authenticated';
 
-      final distance = double.parse(widget.distance.replaceAll(RegExp(r'[^0-9.]'), ''));
+      double distance;
+      try {
+        final cleanDistance = widget.distance.replaceAll(RegExp(r'[^0-9.]'), '');
+        distance = double.parse(cleanDistance);
+        
+        if (distance <= 0) throw 'Invalid distance value';
+      } catch (e) {
+        throw 'Invalid distance format: ${widget.distance}';
+      }
+
       final price = RideService.calculatePrice(distance, widget.vehicleType);
 
       final order = RideOrder(
@@ -96,13 +105,16 @@ class _PassengerDetailsPageState extends State<PassengerDetailsPage> {
           MaterialPageRoute(
             builder: (context) => RideStatusPage(orderId: orderId),
           ),
-          (route) => false, // Remove all previous routes
+          (route) => false,
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to create ride: $e')),
+          SnackBar(
+            content: Text('Failed to create ride: $e'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     } finally {

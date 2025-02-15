@@ -33,6 +33,22 @@ class _VehicleSelectionPageState extends State<VehicleSelectionPage> {
   final RideService _rideService = RideService();
   String _selectedVehicle = '4seater';
   bool _isCreatingOrder = false;
+  bool _isDataLoaded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkDataLoaded();
+  }
+
+  void _checkDataLoaded() {
+    setState(() {
+      _isDataLoaded = widget.distance.isNotEmpty && 
+                      widget.duration.isNotEmpty &&
+                      widget.distance != '0' &&
+                      widget.duration != '0';
+    });
+  }
 
   Future<void> _createRideOrder() async {
     setState(() => _isCreatingOrder = true);
@@ -198,17 +214,28 @@ class _VehicleSelectionPageState extends State<VehicleSelectionPage> {
   }
 
   Widget _buildTripDetail(IconData icon, String value, String label) {
+    final bool hasValue = value.isNotEmpty && value != '0';
+    
     return Column(
       children: [
-        Icon(icon, color: Colors.blue[700], size: 24),
+        Icon(icon, color: hasValue ? Colors.blue[700] : Colors.grey[400], size: 24),
         SizedBox(height: 4),
-        Text(
-          value,
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            color: Colors.black87,
-          ),
-        ),
+        hasValue 
+          ? Text(
+              value,
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: Colors.black87,
+              ),
+            )
+          : SizedBox(
+              height: 16,
+              width: 16,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.blue[700]!),
+              ),
+            ),
         Text(
           label,
           style: TextStyle(
@@ -228,8 +255,10 @@ class _VehicleSelectionPageState extends State<VehicleSelectionPage> {
     String imagePath,
     Color backgroundColor,
   ) {
+    final bool canSelect = _isDataLoaded;
+
     return GestureDetector(
-      onTap: () {
+      onTap: canSelect ? () {
         Navigator.push(
           context,
           MaterialPageRoute(
@@ -244,14 +273,14 @@ class _VehicleSelectionPageState extends State<VehicleSelectionPage> {
             ),
           ),
         );
-      },
+      } : null,
       child: Container(
         padding: EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: backgroundColor,
+          color: canSelect ? backgroundColor : Colors.grey[100],
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: Colors.blue.withOpacity(0.1),
+            color: canSelect ? Colors.blue.withOpacity(0.1) : Colors.grey[300]!,
           ),
         ),
         child: Row(
@@ -265,20 +294,20 @@ class _VehicleSelectionPageState extends State<VehicleSelectionPage> {
                     style: TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.bold,
-                      color: Colors.blue[900],
+                      color: canSelect ? Colors.blue[900] : Colors.grey[600],
                     ),
                   ),
                   SizedBox(height: 4),
                   Text(
                     capacity,
                     style: TextStyle(
-                      color: Colors.blue[700],
+                      color: canSelect ? Colors.blue[700] : Colors.grey[500],
                       fontWeight: FontWeight.w500,
                     ),
                   ),
                   SizedBox(height: 8),
                   Text(
-                    description,
+                    canSelect ? description : 'Waiting for route calculation...',
                     style: TextStyle(
                       color: Colors.grey[600],
                       fontSize: 12,
@@ -287,17 +316,20 @@ class _VehicleSelectionPageState extends State<VehicleSelectionPage> {
                 ],
               ),
             ),
-            Image.asset(
-              imagePath,
-              height: 80,
-              width: 80,
-              errorBuilder: (context, error, stackTrace) {
-                return Icon(
-                  title == 'Sedan' ? Icons.directions_car : Icons.directions_car,
-                  size: 80,
-                  color: Colors.blue[300],
-                );
-              },
+            Opacity(
+              opacity: canSelect ? 1.0 : 0.5,
+              child: Image.asset(
+                imagePath,
+                height: 80,
+                width: 80,
+                errorBuilder: (context, error, stackTrace) {
+                  return Icon(
+                    title == 'Sedan' ? Icons.directions_car : Icons.directions_car,
+                    size: 80,
+                    color: canSelect ? Colors.blue[300] : Colors.grey[400],
+                  );
+                },
+              ),
             ),
           ],
         ),

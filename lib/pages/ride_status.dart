@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../services/ride_service.dart';
 import '../widgets/ride_map.dart';
 import 'package:intl/intl.dart';
@@ -16,6 +17,7 @@ class RideStatusPage extends StatefulWidget {
 
 class _RideStatusPageState extends State<RideStatusPage> {
   late Stream<DocumentSnapshot> _orderStream;
+  late Stream<DocumentSnapshot>? _driverLocationStream;
   final _otpController = TextEditingController();
   final RideService _rideService = RideService();
   bool _isVerifyingOTP = false;
@@ -27,6 +29,21 @@ class _RideStatusPageState extends State<RideStatusPage> {
         .collection('ride_orders')
         .doc(widget.orderId)
         .snapshots();
+    
+    // Initialize driver location stream
+    _orderStream.listen((snapshot) {
+      if (snapshot.exists) {
+        final data = snapshot.data() as Map<String, dynamic>;
+        final riderId = data['rider_id'];
+        if (riderId != null) {
+          _driverLocationStream = FirebaseFirestore.instance
+              .collection('driver_locations')
+              .doc(riderId)
+              .snapshots();
+          setState(() {}); // Trigger rebuild with new stream
+        }
+      }
+    });
   }
 
   Future<void> _cancelRide(Map<String, dynamic> orderData) async {
@@ -74,7 +91,7 @@ class _RideStatusPageState extends State<RideStatusPage> {
         });
 
         if (mounted) {
-          Navigator.pop(context);
+          Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
         }
       }
     } catch (e) {
@@ -182,34 +199,49 @@ class _RideStatusPageState extends State<RideStatusPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Ride Status'),
+        title: Text('Ride Status',style: TextStyle(fontWeight: FontWeight.bold),),
         backgroundColor: Colors.white,
         foregroundColor: Colors.blue[900],
         elevation: 0,
       ),
       body: StreamBuilder<DocumentSnapshot>(
         stream: _orderStream,
-        builder: (context, snapshot) {
-          if (snapshot.hasError) {
-            return Center(child: Text('Error: ${snapshot.error}'));
+        builder: (context, orderSnapshot) {
+          if (orderSnapshot.hasError) {
+            return Center(child: Text('Error: ${orderSnapshot.error}'));
           }
 
-          if (!snapshot.hasData) {
+          if (!orderSnapshot.hasData) {
             return Center(child: CircularProgressIndicator());
           }
 
-          final orderData = snapshot.data!.data() as Map<String, dynamic>;
+          final orderData = orderSnapshot.data!.data() as Map<String, dynamic>;
           final status = orderData['status'] as String;
 
           return Column(
             children: [
-              // Map showing ride route
               if (orderData['pickup_location'] != null && 
                   orderData['destination_location'] != null)
                 Expanded(
-                  child: RideMap(
-                    startLocation: orderData['pickup_location'],
-                    endLocation: orderData['destination_location'],
+                  child: StreamBuilder<DocumentSnapshot>(
+                    stream: _driverLocationStream,
+                    builder: (context, locationSnapshot) {
+                      LatLng? driverLocation;
+                      if (locationSnapshot.hasData && locationSnapshot.data!.exists) {
+                        final locationData = locationSnapshot.data!.data() as Map<String, dynamic>;
+                        driverLocation = LatLng(
+                          locationData['latitude'] ?? 0,
+                          locationData['longitude'] ?? 0,
+                        );
+                      }
+
+                      return RideMap(
+                        startLocation: orderData['pickup_location'],
+                        endLocation: orderData['destination_location'],
+                        driverLocation: driverLocation,
+                        showDriverLocation: status == 'accepted' || status == 'in_transit',
+                      );
+                    },
                   ),
                 ),
 
@@ -229,7 +261,7 @@ class _RideStatusPageState extends State<RideStatusPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    _buildStatusIndicator(status),
+                    _buildStatusIndicator(status, orderData),
                     SizedBox(height: 16),
                     _buildRideDetails(orderData),
                     SizedBox(height: 16),
@@ -290,7 +322,7 @@ class _RideStatusPageState extends State<RideStatusPage> {
     );
   }
 
-  Widget _buildStatusIndicator(String status) {
+  Widget _buildStatusIndicator(String status, Map<String, dynamic> orderData) {
     Color color;
     String message;
     IconData icon;
@@ -343,18 +375,74 @@ class _RideStatusPageState extends State<RideStatusPage> {
         color: color.withOpacity(0.1),
         borderRadius: BorderRadius.circular(8),
       ),
-      child: Row(
+      child: Column(
         children: [
-          Icon(icon, color: color),
-          SizedBox(width: 12),
-          Text(
-            message,
-            style: TextStyle(
-              color: color,
-              fontWeight: FontWeight.bold,
-              fontSize: 16,
-            ),
+          Row(
+            children: [
+              Icon(icon, color: color),
+              SizedBox(width: 12),
+              Text(
+                message,
+                style: TextStyle(
+                  color: color,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
+              ),
+            ],
           ),
+          // Show start ride OTP
+          if (status == 'accepted')
+            Padding(
+              padding: EdgeInsets.only(top: 8),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    'Share OTP with driver: ',
+                    style: TextStyle(
+                      color: Colors.grey[600],
+                      fontSize: 14,
+                    ),
+                  ),
+                  Text(
+                    '${orderData['otp'] ?? 'N/A'}',
+                    style: TextStyle(
+                      color: Colors.blue[900],
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 2,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          // Show completion OTP
+          if (status == 'in_transit')
+            Padding(
+              padding: EdgeInsets.only(top: 8),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    'Completion OTP: ',
+                    style: TextStyle(
+                      color: Colors.grey[600],
+                      fontSize: 14,
+                    ),
+                  ),
+                  Text(
+                    '${orderData['completion_otp'] ?? 'N/A'}',
+                    style: TextStyle(
+                      color: Colors.green[700],
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 2,
+                    ),
+                  ),
+                ],
+              ),
+            ),
         ],
       ),
     );
@@ -406,21 +494,30 @@ class _RideStatusPageState extends State<RideStatusPage> {
     return Padding(
       padding: EdgeInsets.symmetric(vertical: 4),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            label,
-            style: TextStyle(
-              color: Colors.grey[600],
-              fontSize: 14,
+          SizedBox(
+            width: 80,
+            child: Text(
+              label,
+              style: TextStyle(
+                color: Colors.grey[600],
+                fontSize: 14,
+              ),
             ),
           ),
-          Text(
-            value,
-            style: TextStyle(
-              color: Colors.blue[900],
-              fontWeight: FontWeight.w500,
-              fontSize: 14,
+          SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              value,
+              style: TextStyle(
+                color: Colors.blue[900],
+                fontWeight: FontWeight.w500,
+                fontSize: 14,
+              ),
+              textAlign: TextAlign.right,
+              overflow: TextOverflow.visible,
+              softWrap: true,
             ),
           ),
         ],

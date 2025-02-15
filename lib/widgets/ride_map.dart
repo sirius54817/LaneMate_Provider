@@ -7,12 +7,16 @@ class RideMap extends StatefulWidget {
   final GeoPoint? startLocation;
   final GeoPoint? endLocation;
   final bool showFullRoute;
+  final LatLng? driverLocation;
+  final bool showDriverLocation;
 
   const RideMap({
     Key? key,
     this.startLocation,
     this.endLocation,
     this.showFullRoute = false,
+    this.driverLocation,
+    this.showDriverLocation = false,
   }) : super(key: key);
 
   @override
@@ -74,8 +78,27 @@ class _RideMapState extends State<RideMap> {
           ),
           icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
         ),
+        if (widget.showDriverLocation && widget.driverLocation != null)
+          Marker(
+            markerId: MarkerId('driver'),
+            position: widget.driverLocation!,
+            icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+            flat: true,
+            anchor: Offset(0.5, 0.5),
+            zIndex: 2,
+          ),
       },
       polylines: _polylines,
+      circles: widget.showDriverLocation && widget.driverLocation != null ? {
+        Circle(
+          circleId: CircleId('driverRadius'),
+          center: widget.driverLocation!,
+          radius: 100, // 100 meters radius
+          fillColor: Colors.blue.withOpacity(0.2),
+          strokeColor: Colors.blue,
+          strokeWidth: 1,
+        ),
+      } : {},
       onMapCreated: (controller) => _mapController = controller,
     );
   }

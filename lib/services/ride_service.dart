@@ -189,9 +189,13 @@ class RideService {
       if (!doc.exists) return false;
       if (doc.data()!['otp'] != otp) return false;
 
+      // Generate completion OTP
+      String completionOtp = generateOTP();
+
       await doc.reference.update({
         'status': 'in_transit',
         'start_time': FieldValue.serverTimestamp(),
+        'completion_otp': completionOtp,
       });
 
       return true;
@@ -201,13 +205,18 @@ class RideService {
     }
   }
 
-  // Add method to complete ride
-  Future<bool> completeRide(String orderId) async {
+  // Update complete ride method to verify completion OTP
+  Future<bool> completeRide(String orderId, String completionOtp) async {
     try {
-      await FirebaseFirestore.instance
+      final doc = await FirebaseFirestore.instance
           .collection('ride_orders')
           .doc(orderId)
-          .update({
+          .get();
+
+      if (!doc.exists) return false;
+      if (doc.data()!['completion_otp'] != completionOtp) return false;
+
+      await doc.reference.update({
         'status': 'completed',
         'end_time': FieldValue.serverTimestamp(),
       });
@@ -249,5 +258,33 @@ class RideService {
       print('Error retrying booking: $e');
       return false;
     }
+  }
+
+  // Add this method to update driver location
+  Future<void> updateDriverLocation(String riderId, LatLng location) async {
+    try {
+      await FirebaseFirestore.instance
+          .collection('driver_locations')
+          .doc(riderId)
+          .set({
+        'latitude': location.latitude,
+        'longitude': location.longitude,
+        'last_updated': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    } catch (e) {
+      print('Error updating driver location: $e');
+    }
+  }
+
+  // Update the streamDriverLocation method
+  Stream<LatLng> streamDriverLocation(String riderId) {
+    final locationManager = LocationManager();
+    
+    return locationManager.getLocationStream().map((position) {
+      final location = LatLng(position.latitude, position.longitude);
+      // Update location in Firebase
+      updateDriverLocation(riderId, location);
+      return location;
+    });
   }
 } 
