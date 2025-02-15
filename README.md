@@ -23,7 +23,7 @@ ECUB Delivery is a modern Flutter-based delivery management application that hel
 ## 🚀 Getting Started
 
 ### Prerequisites
-- Flutter SDK (^3.5.0)
+- Flutter SDK (^3.5.1)
 - Android Studio / Xcode
 - Firebase project setup
 - Google Maps API key
