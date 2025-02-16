@@ -1,12 +1,11 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:carousel_slider/carousel_slider.dart';
-import 'package:ecub_delivery/pages/signup.dart';
+import 'package:ecub_delivery/klu_page/signup.dart';
 import 'package:ecub_delivery/services/auth_service.dart';
-import 'package:ecub_delivery/pages/navigation.dart' as regular;
+import 'package:ecub_delivery/klu_page/navigation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:ecub_delivery/klu_page/navigation.dart' as klu;
 
 class Login extends StatefulWidget {
   const Login({Key? key}) : super(key: key);
@@ -261,28 +260,6 @@ class _LoginState extends State<Login> {
         password: _passwordController.text,
         context: context,
       );
-
-      if (!context.mounted) return;
-
-      // Check email domain and redirect accordingly
-      final email = _emailController.text.toLowerCase();
-      if (email.endsWith('@klu.ac.in')) {
-        // Redirect KLU users to KLU navigation
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (context) => const klu.MainNavigation(),
-          ),
-        );
-      } else {
-        // Redirect other users to regular navigation
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (context) => const regular.MainNavigation(),
-          ),
-        );
-      }
 
       // After successful login, check if user has completed driver verification
       final userId = FirebaseAuth.instance.currentUser?.uid;

@@ -12,10 +12,10 @@ class RideStatusPage extends StatefulWidget {
   const RideStatusPage({Key? key, required this.orderId}) : super(key: key);
 
   @override
-  State<RideStatusPage> createState() => _RideStatusPageState();
+  State<RideStatusPage> createState() => _RideStatusklu_pagetate();
 }
 
-class _RideStatusPageState extends State<RideStatusPage> {
+class _RideStatusklu_pagetate extends State<RideStatusPage> {
   late Stream<DocumentSnapshot> _orderStream;
   Stream<DocumentSnapshot>? _driverLocationStream;
   final _otpController = TextEditingController();
