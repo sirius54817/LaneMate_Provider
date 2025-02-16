@@ -31,7 +31,7 @@ class VehicleSelectionPage extends StatefulWidget {
 
 class _VehicleSelectionklu_pagetate extends State<VehicleSelectionPage> {
   final KLURideService _rideService = KLURideService();
-  String _selectedVehicle = '4seater';
+  String _selectedVehicle = 'bus';
   bool _isCreatingOrder = false;
   bool _isDataLoaded = false;
 
@@ -152,29 +152,125 @@ class _VehicleSelectionklu_pagetate extends State<VehicleSelectionPage> {
             ),
           ),
 
-          // Vehicle Options
+          // Bus Option Card
           Expanded(
-            child: ListView(
+            child: Padding(
               padding: EdgeInsets.all(16),
-              children: [
-                _buildVehicleCard(
-                  context,
-                  'Sedan',
-                  '4 Seats',
-                  'Comfortable ride for up to 4 passengers',
-                  'assets/images/sedan.png',
-                  Colors.white,
+              child: GestureDetector(
+                onTap: _isDataLoaded ? () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => SeatLayoutPage(
+                        vehicleType: VehicleType.bus,
+                        startAddress: widget.startAddress,
+                        destinationAddress: widget.destinationAddress,
+                        distance: widget.distance,
+                        duration: widget.duration,
+                        startPoint: widget.startPoint,
+                        destination: widget.destination,
+                      ),
+                    ),
+                  );
+                } : null,
+                child: Container(
+                  padding: EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: _isDataLoaded ? Colors.white : Colors.grey[100],
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: _isDataLoaded ? Colors.blue.withOpacity(0.1) : Colors.grey[300]!,
+                    ),
+                    boxShadow: _isDataLoaded ? [
+                      BoxShadow(
+                        color: Colors.blue.withOpacity(0.1),
+                        blurRadius: 10,
+                        offset: Offset(0, 4),
+                      ),
+                    ] : null,
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'KLU Bus',
+                              style: TextStyle(
+                                fontSize: 24,
+                                fontWeight: FontWeight.bold,
+                                color: _isDataLoaded ? Colors.blue[900] : Colors.grey[600],
+                              ),
+                            ),
+                            SizedBox(height: 8),
+                            Text(
+                              '40 Seats',
+                              style: TextStyle(
+                                color: _isDataLoaded ? Colors.blue[700] : Colors.grey[500],
+                                fontWeight: FontWeight.w500,
+                                fontSize: 16,
+                              ),
+                            ),
+                            SizedBox(height: 12),
+                            Text(
+                              _isDataLoaded 
+                                ? 'Comfortable college bus service with AC'
+                                : 'Waiting for route calculation...',
+                              style: TextStyle(
+                                color: Colors.grey[600],
+                                fontSize: 14,
+                              ),
+                            ),
+                            if (_isDataLoaded) ...[
+                              SizedBox(height: 16),
+                              Text(
+                                'Features:',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.blue[900],
+                                ),
+                              ),
+                              SizedBox(height: 8),
+                              _buildFeatureRow(Icons.ac_unit, 'Air Conditioned'),
+                              _buildFeatureRow(Icons.airline_seat_recline_extra, 'Comfortable Seating'),
+                              _buildFeatureRow(Icons.security, 'Safe & Secure'),
+                            ],
+                          ],
+                        ),
+                      ),
+                      Icon(
+                        Icons.directions_bus,
+                        size: 80,
+                        color: _isDataLoaded ? Colors.blue[300] : Colors.grey[400],
+                      ),
+                    ],
+                  ),
                 ),
-                SizedBox(height: 16),
-                _buildVehicleCard(
-                  context,
-                  'SUV',
-                  '6 Seats',
-                  'Spacious ride for up to 6 passengers',
-                  'assets/images/suv.png',
-                  Colors.white,
-                ),
-              ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFeatureRow(IconData icon, String text) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: 4),
+      child: Row(
+        children: [
+          Icon(
+            icon,
+            size: 16,
+            color: Colors.blue[700],
+          ),
+          SizedBox(width: 8),
+          Text(
+            text,
+            style: TextStyle(
+              color: Colors.grey[700],
+              fontSize: 14,
             ),
           ),
         ],
@@ -244,96 +340,6 @@ class _VehicleSelectionklu_pagetate extends State<VehicleSelectionPage> {
           ),
         ),
       ],
-    );
-  }
-
-  Widget _buildVehicleCard(
-    BuildContext context,
-    String title,
-    String capacity,
-    String description,
-    String imagePath,
-    Color backgroundColor,
-  ) {
-    final bool canSelect = _isDataLoaded;
-
-    return GestureDetector(
-      onTap: canSelect ? () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => SeatLayoutPage(
-              vehicleType: title == 'Sedan' ? VehicleType.sedan : VehicleType.suv,
-              startAddress: widget.startAddress,
-              destinationAddress: widget.destinationAddress,
-              distance: widget.distance,
-              duration: widget.duration,
-              startPoint: widget.startPoint,
-              destination: widget.destination,
-            ),
-          ),
-        );
-      } : null,
-      child: Container(
-        padding: EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: canSelect ? backgroundColor : Colors.grey[100],
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: canSelect ? Colors.blue.withOpacity(0.1) : Colors.grey[300]!,
-          ),
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: canSelect ? Colors.blue[900] : Colors.grey[600],
-                    ),
-                  ),
-                  SizedBox(height: 4),
-                  Text(
-                    capacity,
-                    style: TextStyle(
-                      color: canSelect ? Colors.blue[700] : Colors.grey[500],
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  SizedBox(height: 8),
-                  Text(
-                    canSelect ? description : 'Waiting for route calculation...',
-                    style: TextStyle(
-                      color: Colors.grey[600],
-                      fontSize: 12,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Opacity(
-              opacity: canSelect ? 1.0 : 0.5,
-              child: Image.asset(
-                imagePath,
-                height: 80,
-                width: 80,
-                errorBuilder: (context, error, stackTrace) {
-                  return Icon(
-                    title == 'Sedan' ? Icons.directions_car : Icons.directions_car,
-                    size: 80,
-                    color: canSelect ? Colors.blue[300] : Colors.grey[400],
-                  );
-                },
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }

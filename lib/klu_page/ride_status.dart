@@ -5,6 +5,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../services/ride_service.dart';
 import '../widgets/ride_map.dart';
 import 'package:intl/intl.dart';
+import 'package:ecub_delivery/klu_page/navigation.dart';
 
 class RideStatusPage extends StatefulWidget {
   final String orderId;
@@ -16,7 +17,7 @@ class RideStatusPage extends StatefulWidget {
 }
 
 class _RideStatusklu_pagetate extends State<RideStatusPage> {
-  late Stream<DocumentSnapshot> _orderStream;
+  Stream<DocumentSnapshot>? _orderStream;
   Stream<DocumentSnapshot>? _driverLocationStream;
   final _otpController = TextEditingController();
   final RideService _rideService = RideService();
@@ -25,26 +26,69 @@ class _RideStatusklu_pagetate extends State<RideStatusPage> {
   @override
   void initState() {
     super.initState();
-    _orderStream = FirebaseFirestore.instance
-        .collection('ride_orders')
-        .doc(widget.orderId)
-        .snapshots();
-    
-    // Initialize driver location stream
-    _orderStream.listen((snapshot) {
-      if (snapshot.exists) {
-        final data = snapshot.data() as Map<String, dynamic>;
-        final riderId = data['rider_id'];
-        if (riderId != null) {
-          setState(() {
-            _driverLocationStream = FirebaseFirestore.instance
-                .collection('driver_locations')
-                .doc(riderId)
-                .snapshots();
-          });
-        }
+    _initializeStreams();
+  }
+
+  void _initializeStreams() {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('User not authenticated')),
+        );
+        Navigator.pop(context);
+        return;
       }
-    });
+
+      final collectionName = user.email?.endsWith('@klu.ac.in') == true 
+          ? 'klu_ride_orders' 
+          : 'ride_orders';
+
+      _orderStream = FirebaseFirestore.instance
+          .collection(collectionName)
+          .doc(widget.orderId)
+          .snapshots();
+      
+      // Initialize driver location stream
+      _orderStream?.listen((snapshot) {
+        if (snapshot.exists) {
+          final data = snapshot.data() as Map<String, dynamic>?;
+          if (data != null) {
+            final riderId = data['rider_id'];
+            if (riderId != null) {
+              setState(() {
+                _driverLocationStream = FirebaseFirestore.instance
+                    .collection('driver_locations')
+                    .doc(riderId)
+                    .snapshots();
+              });
+            }
+          }
+        }
+      });
+
+      setState(() {}); // Trigger rebuild
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error initializing: $e')),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _otpController.dispose();
+    super.dispose();
+  }
+
+  Future<bool> _onWillPop() async {
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(
+        builder: (context) => MainNavigation(initialIndex: 0),
+      ),
+      (route) => false,
+    );
+    return false;
   }
 
   Future<void> _cancelRide(Map<String, dynamic> orderData) async {
@@ -198,127 +242,178 @@ class _RideStatusklu_pagetate extends State<RideStatusPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('Ride Status',style: TextStyle(fontWeight: FontWeight.bold),),
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.blue[900],
-        elevation: 0,
-      ),
-      body: StreamBuilder<DocumentSnapshot>(
-        stream: _orderStream,
-        builder: (context, orderSnapshot) {
-          if (orderSnapshot.hasError) {
-            return Center(child: Text('Error: ${orderSnapshot.error}'));
-          }
-
-          if (!orderSnapshot.hasData) {
-            return Center(child: CircularProgressIndicator());
-          }
-
-          final orderData = orderSnapshot.data!.data() as Map<String, dynamic>;
-          final status = orderData['status'] as String;
-
-          return Column(
-            children: [
-              if (orderData['pickup_location'] != null && 
-                  orderData['destination_location'] != null)
-                Expanded(
-                  child: StreamBuilder<DocumentSnapshot>(
-                    stream: _driverLocationStream,
-                    builder: (context, locationSnapshot) {
-                      LatLng? driverLocation;
-                      if (locationSnapshot.hasData && locationSnapshot.data!.exists) {
-                        final locationData = locationSnapshot.data!.data() as Map<String, dynamic>;
-                        driverLocation = LatLng(
-                          locationData['latitude'] ?? 0,
-                          locationData['longitude'] ?? 0,
-                        );
-                      }
-
-                      return RideMap(
-                        startLocation: orderData['pickup_location'],
-                        endLocation: orderData['destination_location'],
-                        driverLocation: driverLocation,
-                        showDriverLocation: status == 'accepted' || status == 'in_transit',
-                      );
-                    },
-                  ),
+    return WillPopScope(
+      onWillPop: _onWillPop,
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text('Ride Status', style: TextStyle(fontWeight: FontWeight.bold)),
+          backgroundColor: Colors.white,
+          foregroundColor: Colors.blue[900],
+          elevation: 0,
+          leading: IconButton(
+            icon: Icon(Icons.arrow_back),
+            onPressed: () {
+              Navigator.of(context).pushAndRemoveUntil(
+                MaterialPageRoute(
+                  builder: (context) => MainNavigation(initialIndex: 0),
                 ),
+                (route) => false,
+              );
+            },
+          ),
+        ),
+        body: _orderStream == null
+            ? Center(child: CircularProgressIndicator())
+            : StreamBuilder<DocumentSnapshot>(
+                stream: _orderStream,
+                builder: (context, orderSnapshot) {
+                  if (orderSnapshot.hasError) {
+                    return Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text('Error: ${orderSnapshot.error}'),
+                          ElevatedButton(
+                            onPressed: _initializeStreams,
+                            child: Text('Retry'),
+                          ),
+                        ],
+                      ),
+                    );
+                  }
 
-              // Status and actions container
-              Container(
-                padding: EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
-                      blurRadius: 10,
-                      offset: Offset(0, -5),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    _buildStatusIndicator(status, orderData),
-                    SizedBox(height: 16),
-                    _buildRideDetails(orderData),
-                    SizedBox(height: 16),
-                    if (status == 'pending')
-                      ElevatedButton(
-                        onPressed: () => _cancelRide(orderData),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.red,
-                          padding: EdgeInsets.symmetric(vertical: 12),
+                  if (!orderSnapshot.hasData) {
+                    return Center(child: CircularProgressIndicator());
+                  }
+
+                  if (!orderSnapshot.data!.exists) {
+                    return Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text('Ride not found'),
+                          ElevatedButton(
+                            onPressed: () => Navigator.pop(context),
+                            child: Text('Go Back'),
+                          ),
+                        ],
+                      ),
+                    );
+                  }
+
+                  final orderData = orderSnapshot.data!.data() as Map<String, dynamic>?;
+                  if (orderData == null) {
+                    return Center(child: Text('Invalid ride data'));
+                  }
+
+                  final status = orderData['status'] as String? ?? 'unknown';
+
+                  return Column(
+                    children: [
+                      if (orderData['pickup_location'] != null && 
+                          orderData['destination_location'] != null)
+                        Expanded(
+                          child: StreamBuilder<DocumentSnapshot>(
+                            stream: _driverLocationStream,
+                            builder: (context, locationSnapshot) {
+                              LatLng? driverLocation;
+                              if (locationSnapshot.hasData && 
+                                  locationSnapshot.data!.exists) {
+                                final locationData = 
+                                    locationSnapshot.data!.data() as Map<String, dynamic>?;
+                                if (locationData != null) {
+                                  driverLocation = LatLng(
+                                    locationData['latitude'] ?? 0,
+                                    locationData['longitude'] ?? 0,
+                                  );
+                                }
+                              }
+
+                              return RideMap(
+                                startLocation: orderData['pickup_location'],
+                                endLocation: orderData['destination_location'],
+                                driverLocation: driverLocation,
+                                showDriverLocation: status == 'accepted' || 
+                                                  status == 'in_transit',
+                              );
+                            },
+                          ),
                         ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.cancel, color: Colors.white),
-                            SizedBox(width: 8),
-                            Text(
-                              'Cancel Ride', 
-                              style: TextStyle(color: Colors.white),
+
+                      // Status and actions container
+                      Container(
+                        padding: EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.1),
+                              blurRadius: 10,
+                              offset: Offset(0, -5),
                             ),
                           ],
                         ),
-                      ),
-                    if (status == 'accepted' && orderData['otp'] != null)
-                      ElevatedButton(
-                        onPressed: () => _showOTPDialog(widget.orderId),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.blue[700],
-                          padding: EdgeInsets.symmetric(vertical: 12),
-                        ),
-                        child: Text('Enter OTP to Start Ride'),
-                      ),
-                    if (status == 'expired')
-                      ElevatedButton(
-                        onPressed: _retryBooking,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.blue[700],
-                          padding: EdgeInsets.symmetric(vertical: 12),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            Icon(Icons.refresh, color: Colors.white),
-                            SizedBox(width: 8),
-                            Text(
-                              'Retry Booking', 
-                              style: TextStyle(color: Colors.white),
-                            ),
+                            _buildStatusIndicator(status, orderData),
+                            SizedBox(height: 16),
+                            _buildRideDetails(orderData),
+                            SizedBox(height: 16),
+                            if (status == 'pending')
+                              ElevatedButton(
+                                onPressed: () => _cancelRide(orderData),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.red,
+                                  padding: EdgeInsets.symmetric(vertical: 12),
+                                ),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(Icons.cancel, color: Colors.white),
+                                    SizedBox(width: 8),
+                                    Text(
+                                      'Cancel Ride', 
+                                      style: TextStyle(color: Colors.white),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            if (status == 'accepted' && orderData['otp'] != null)
+                              ElevatedButton(
+                                onPressed: () => _showOTPDialog(widget.orderId),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.blue[700],
+                                  padding: EdgeInsets.symmetric(vertical: 12),
+                                ),
+                                child: Text('Enter OTP to Start Ride'),
+                              ),
+                            if (status == 'expired')
+                              ElevatedButton(
+                                onPressed: _retryBooking,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.blue[700],
+                                  padding: EdgeInsets.symmetric(vertical: 12),
+                                ),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(Icons.refresh, color: Colors.white),
+                                    SizedBox(width: 8),
+                                    Text(
+                                      'Retry Booking', 
+                                      style: TextStyle(color: Colors.white),
+                                    ),
+                                  ],
+                                ),
+                              ),
                           ],
                         ),
                       ),
-                  ],
-                ),
+                    ],
+                  );
+                },
               ),
-            ],
-          );
-        },
       ),
     );
   }
@@ -462,15 +557,15 @@ class _RideStatusklu_pagetate extends State<RideStatusPage> {
           ),
         ),
         SizedBox(height: 12),
-        _buildDetailRow('From', orderData['pickup'] ?? 'Unknown'),
-        _buildDetailRow('To', orderData['destination'] ?? 'Unknown'),
+        _buildDetailRow('From', orderData['pickup']?.toString() ?? 'Unknown'),
+        _buildDetailRow('To', orderData['destination']?.toString() ?? 'Unknown'),
         _buildDetailRow(
           'Distance', 
-          '${orderData['distance']?.toStringAsFixed(1) ?? 'Unknown'} km'
+          '${(orderData['distance'] ?? 0.0).toStringAsFixed(1)} km'
         ),
         _buildDetailRow(
           'Price', 
-          '₹${orderData['calculatedPrice'] ?? 'Unknown'}'
+          '₹${orderData['calculatedPrice']?.toString() ?? 'Unknown'}'
         ),
         if (orderData['rider_id'] != null)
           FutureBuilder<DocumentSnapshot>(
@@ -479,11 +574,11 @@ class _RideStatusklu_pagetate extends State<RideStatusPage> {
                 .doc(orderData['rider_id'])
                 .get(),
             builder: (context, snapshot) {
-              if (!snapshot.hasData) return SizedBox();
+              if (!snapshot.hasData || !snapshot.data!.exists) return SizedBox();
               final userData = snapshot.data!.data() as Map<String, dynamic>?;
               return _buildDetailRow(
                 'Driver',
-                userData?['name'] ?? 'Unknown Driver',
+                userData?['name']?.toString() ?? 'Unknown Driver',
               );
             },
           ),

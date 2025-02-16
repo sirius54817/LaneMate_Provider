@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'passenger_details_page.dart';
 
-enum VehicleType { sedan, suv }
+enum VehicleType { bus }
 
 class SeatLayoutPage extends StatefulWidget {
   final VehicleType vehicleType;
@@ -25,10 +25,10 @@ class SeatLayoutPage extends StatefulWidget {
   }) : super(key: key);
 
   @override
-  State<SeatLayoutPage> createState() => _SeatLayoutklu_pagetate();
+  State<SeatLayoutPage> createState() => _SeatLayoutPageState();
 }
 
-class _SeatLayoutklu_pagetate extends State<SeatLayoutPage> {
+class _SeatLayoutPageState extends State<SeatLayoutPage> {
   Set<String> selectedSeats = {};
 
   void toggleSeat(String seatId) {
@@ -46,7 +46,7 @@ class _SeatLayoutklu_pagetate extends State<SeatLayoutPage> {
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          widget.vehicleType == VehicleType.sedan ? 'Sedan Layout' : 'SUV Layout',
+          'Bus Layout',
           style: TextStyle(color: Colors.blue[900]),
         ),
         backgroundColor: Colors.white,
@@ -106,7 +106,7 @@ class _SeatLayoutklu_pagetate extends State<SeatLayoutPage> {
               child: Column(
                 children: [
                   Text(
-                    'Seat Layout',
+                    'Select Your Seat',
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
@@ -115,9 +115,7 @@ class _SeatLayoutklu_pagetate extends State<SeatLayoutPage> {
                   ),
                   SizedBox(height: 20),
                   Expanded(
-                    child: widget.vehicleType == VehicleType.sedan
-                        ? _buildSedanLayout()
-                        : _buildSUVLayout(),
+                    child: _buildBusLayout(),
                   ),
                 ],
               ),
@@ -151,9 +149,7 @@ class _SeatLayoutklu_pagetate extends State<SeatLayoutPage> {
                                 startPoint: widget.startPoint,
                                 destination: widget.destination,
                                 distance: widget.distance,
-                                vehicleType: widget.vehicleType == VehicleType.sedan 
-                                    ? '4seater' 
-                                    : '6seater',
+                                vehicleType: 'bus',
                               ),
                             ),
                           );
@@ -182,67 +178,34 @@ class _SeatLayoutklu_pagetate extends State<SeatLayoutPage> {
     );
   }
 
-  Widget _buildSedanLayout() {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        // First row (2 seats)
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            _buildSeat(seatId: 'front_passenger'),
-            SizedBox(width: 20),
-            _buildSeat(seatId: 'driver', isDriver: true),
+  Widget _buildBusLayout() {
+    return SingleChildScrollView(
+      child: Column(
+        children: [
+          // Driver section
+          Row(
+            children: [
+              _buildSeat(seatId: 'driver', isDriver: true),
+              SizedBox(width: 100), // Space for entrance
+            ],
+          ),
+          SizedBox(height: 20),
+          // Passenger seats (10 rows of 4 seats)
+          for (int row = 1; row <= 10; row++) ...[
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                _buildSeat(seatId: 'L${row}A'),
+                _buildSeat(seatId: 'L${row}B'),
+                SizedBox(width: 40), // Aisle
+                _buildSeat(seatId: 'R${row}A'),
+                _buildSeat(seatId: 'R${row}B'),
+              ],
+            ),
+            SizedBox(height: 10),
           ],
-        ),
-        SizedBox(height: 40),
-        // Second row (2 seats)
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            _buildSeat(seatId: 'rear_left'),
-            SizedBox(width: 20),
-            _buildSeat(seatId: 'rear_right'),
-          ],
-        ),
-      ],
-    );
-  }
-
-  Widget _buildSUVLayout() {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        // First row (2 seats)
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            _buildSeat(seatId: 'front_passenger'),
-            SizedBox(width: 20),
-            _buildSeat(seatId: 'driver', isDriver: true),
-          ],
-        ),
-        SizedBox(height: 40),
-        // Second row (2 seats)
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            _buildSeat(seatId: 'middle_left'),
-            SizedBox(width: 20),
-            _buildSeat(seatId: 'middle_right'),
-          ],
-        ),
-        SizedBox(height: 40),
-        // Third row (2 seats)
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            _buildSeat(seatId: 'rear_left'),
-            SizedBox(width: 20),
-            _buildSeat(seatId: 'rear_right'),
-          ],
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -252,8 +215,8 @@ class _SeatLayoutklu_pagetate extends State<SeatLayoutPage> {
     return GestureDetector(
       onTap: isDriver ? null : () => toggleSeat(seatId),
       child: Container(
-        width: 50,
-        height: 50,
+        width: 40,
+        height: 40,
         decoration: BoxDecoration(
           color: isDriver 
               ? Colors.grey[300]
@@ -278,7 +241,7 @@ class _SeatLayoutklu_pagetate extends State<SeatLayoutPage> {
                 : isSelected 
                     ? Colors.white
                     : Colors.blue[700],
-            size: 30,
+            size: 24,
           ),
         ),
       ),

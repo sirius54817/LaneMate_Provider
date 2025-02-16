@@ -116,6 +116,12 @@ class RideOrder {
       'cancellation_fee': cancellationFee,
     };
   }
+
+  static String getCollectionName(String? userEmail) {
+    return userEmail?.endsWith('@klu.ac.in') == true 
+        ? 'klu_ride_orders' 
+        : 'ride_orders';
+  }
 }
 
 class OrdersPage extends StatefulWidget {
@@ -169,35 +175,26 @@ class _Ordersklu_pagetate extends State<OrdersPage> {
         return;
       }
 
-      logger.i('Initializing orders stream for user: ${user.uid}');
-      Query query = FirebaseFirestore.instance.collection('ride_orders');
+      final userEmail = user.email;
+      final collectionName = 'klu_ride_orders'; // Always use KLU collection for drivers
+      
+      logger.i('Initializing orders stream for driver: ${user.uid} from collection: $collectionName');
+
+      Query query = FirebaseFirestore.instance.collection(collectionName);
 
       if (widget.isGivingRide) {
-        switch (_selectedIndex) {
-          case 0:
-            logger.d('Filtering for available rides');
-            query = query
-              .where('status', isEqualTo: 'pending')
-              .where('rider_id', isNull: true);
-            break;
-          case 1:
-            logger.d('Filtering for accepted/in-transit rides');
-            query = query
-              .where('rider_id', isEqualTo: user.uid)
-              .where('status', whereIn: ['accepted', 'in_transit']);
-            break;
-          case 2:
-            logger.d('Filtering for completed rides');
-            query = query
-              .where('rider_id', isEqualTo: user.uid)
-              .where('status', isEqualTo: 'completed');
-            break;
-        }
+        // Show all pending rides without rider
+        query = query
+          .where('status', isEqualTo: 'pending')
+          .where('rider_id', isNull: true);
       } else {
+        // For passengers, keep existing logic
         logger.d('Filtering for passenger rides: ${_selectedIndex == 0 ? 'current' : 'completed'}');
         query = query
           .where('user_id', isEqualTo: user.uid)
-          .where('status', isEqualTo: _selectedIndex == 0 ? 'in_transit' : 'completed');
+          .where('status', whereIn: _selectedIndex == 0 
+            ? ['pending', 'accepted', 'in_transit'] 
+            : ['completed']); 
       }
 
       query = query.orderBy('request_time', descending: true);
@@ -292,7 +289,7 @@ class _Ordersklu_pagetate extends State<OrdersPage> {
               ),
             ),
             Text(
-              widget.isGivingRide ? 'Available Rides' : 'My Rides',
+              widget.isGivingRide ? 'KLU Ride Requests' : 'My Rides',
               style: TextStyle(
                 color: Colors.blue[700],
                 fontSize: 20,
@@ -301,21 +298,15 @@ class _Ordersklu_pagetate extends State<OrdersPage> {
             ),
           ],
         ),
-        bottom: PreferredSize(
+        bottom: widget.isGivingRide ? null : PreferredSize(
           preferredSize: const Size.fromHeight(50),
           child: Container(
             color: Colors.white,
             child: Row(
-              children: widget.isGivingRide 
-                ? [
-                    _buildTabButton(0, 'Available', Icons.local_taxi),
-                    _buildTabButton(1, 'Accepted', Icons.directions_car),
-                    _buildTabButton(2, 'Completed', Icons.check_circle),
-                  ]
-                : [
-                    _buildTabButton(0, 'Current Ride', Icons.directions_car),
-                    _buildTabButton(1, 'Completed', Icons.check_circle),
-                  ],
+              children: [
+                _buildTabButton(0, 'Current Ride', Icons.directions_car),
+                _buildTabButton(1, 'Completed', Icons.check_circle),
+              ],
             ),
           ),
         ),
@@ -355,11 +346,7 @@ class _Ordersklu_pagetate extends State<OrdersPage> {
                       children: [
                         Icon(
                           widget.isGivingRide
-                            ? _selectedIndex == 0 
-                              ? Icons.local_taxi
-                              : _selectedIndex == 1 
-                                ? Icons.directions_car 
-                                : Icons.check_circle
+                            ? Icons.local_taxi
                             : _selectedIndex == 0
                               ? Icons.directions_car
                               : Icons.check_circle,
@@ -369,7 +356,7 @@ class _Ordersklu_pagetate extends State<OrdersPage> {
                         SizedBox(height: 16),
                         Text(
                           widget.isGivingRide
-                            ? 'No ${_selectedIndex == 0 ? "available" : _selectedIndex == 1 ? "accepted" : "completed"} rides'
+                            ? 'No ride requests from KLU'
                             : 'No ${_selectedIndex == 0 ? "current" : "completed"} rides',
                           style: TextStyle(
                             color: Colors.blue[900],
@@ -595,11 +582,12 @@ class _Ordersklu_pagetate extends State<OrdersPage> {
         return;
       }
 
-      logger.i('Attempting to accept ride: ${order['docId']}');
+      final collectionName = RideOrder.getCollectionName(currentUser.email);
+      logger.i('Attempting to accept ride: ${order['docId']} from collection: $collectionName');
       
       // First check if the ride is still available
       final rideDoc = await FirebaseFirestore.instance
-          .collection('ride_orders')
+          .collection(collectionName)
           .doc(order['docId'])
           .get();
 
@@ -615,7 +603,7 @@ class _Ordersklu_pagetate extends State<OrdersPage> {
       }
 
       await FirebaseFirestore.instance
-          .collection('ride_orders')
+          .collection(collectionName)
           .doc(order['docId'])
           .update({
         'rider_id': currentUser.uid,
@@ -657,30 +645,45 @@ class _Ordersklu_pagetate extends State<OrdersPage> {
   }
 
   Future<void> _verifyCompletionOTP(String orderId, String enteredOTP) async {
-    if (_isVerifying) {
-      logger.d('Already verifying OTP, skipping');
-      return;
-    }
+    if (_isVerifying) return;
 
     setState(() => _isVerifying = true);
-    logger.i('Verifying completion OTP for order: $orderId');
-
+    
     try {
-      final success = await RideService().completeRide(orderId, enteredOTP);
-      logger.i('OTP verification result: ${success ? 'success' : 'failed'}');
-      
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) throw 'User not authenticated';
+
+      final collectionName = RideOrder.getCollectionName(user.email);
+      logger.i('Verifying completion OTP for order: $orderId in collection: $collectionName');
+
+      final rideDoc = await FirebaseFirestore.instance
+          .collection(collectionName)
+          .doc(orderId)
+          .get();
+
+      final rideData = rideDoc.data() as Map<String, dynamic>;
+      final storedOTP = rideData['otp'];
+
+      if (enteredOTP != storedOTP) {
+        throw 'Invalid OTP';
+      }
+
+      await FirebaseFirestore.instance
+          .collection(collectionName)
+          .doc(orderId)
+          .update({
+        'status': 'in_transit',
+        'start_time': FieldValue.serverTimestamp(),
+      });
+
       if (mounted) {
-        if (success) {
-          Navigator.pop(context);
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Ride completed successfully!')),
-          );
-        } else {
-          logger.w('Invalid completion OTP entered');
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Invalid completion OTP')),
-          );
-        }
+        setState(() {});
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Ride started successfully! Showing route to destination.'),
+            backgroundColor: Colors.green,
+          ),
+        );
       }
     } catch (e, stackTrace) {
       logger.e('Error verifying completion OTP', error: e, stackTrace: stackTrace);
@@ -831,86 +834,15 @@ class _RideDetailsSheetState extends State<RideDetailsSheet> {
   }
 
   Future<void> _cancelRide() async {
-    logger.i('Attempting to cancel ride: ${widget.order['docId']}');
-    
-    if (widget.isDriver) {
-      final bool? confirmed = await showDialog<bool>(
-        context: context,
-        barrierDismissible: false,
-        builder: (BuildContext context) {
-          return AlertDialog(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(15),
-            ),
-            title: Text(
-              'Cancel Ride',
-              style: TextStyle(
-                color: Colors.red[700],
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Are you sure you want to cancel this ride?',
-                  style: TextStyle(
-                    fontSize: 16,
-                    color: Colors.grey[800],
-                  ),
-                ),
-                SizedBox(height: 12),
-                Text(
-                  'This action cannot be undone.',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.grey[600],
-                    fontStyle: FontStyle.italic,
-                  ),
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(false),
-                child: Text(
-                  'No, Keep Ride',
-                  style: TextStyle(
-                    color: Colors.blue[700],
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-              ElevatedButton(
-                onPressed: () => Navigator.of(context).pop(true),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.red,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
-                child: Text(
-                  'Yes, Cancel',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ],
-          );
-        },
-      );
-
-      if (confirmed != true) {
-        logger.d('Ride cancellation cancelled by driver');
-        return;
-      }
-    }
-
     try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) throw 'User not authenticated';
+
+      final collectionName = RideOrder.getCollectionName(user.email);
+      logger.i('Attempting to cancel ride: ${widget.order['docId']} in collection: $collectionName');
+
       await FirebaseFirestore.instance
-          .collection('ride_orders')
+          .collection(collectionName)
           .doc(widget.order['docId'])
           .update({
         'status': 'cancelled',
