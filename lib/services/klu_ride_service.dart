@@ -4,22 +4,19 @@ import 'dart:math';
 
 class KLURideService {
   static int calculatePrice(double distance, String vehicleType) {
-    // Base price for the first kilometer
-    int basePrice = 50;
+    // Price per kilometer for KLU rides
+    const double pricePerKm = 1.5;
     
-    // Price per additional kilometer
-    double pricePerKm = vehicleType.toLowerCase() == '6seater' ? 15.0 : 12.0;
+    // Calculate base price
+    double totalPrice = distance * pricePerKm;
     
-    // Calculate total price
-    int totalPrice = basePrice + (distance * pricePerKm).round();
-    
-    // Add vehicle type premium
+    // Add vehicle type premium for 6-seater
     if (vehicleType.toLowerCase() == '6seater') {
-      totalPrice += 20; // Additional premium for 6-seater
+      totalPrice += 5.0; // Small premium for 6-seater
     }
     
-    // Round to nearest 10
-    return ((totalPrice + 5) ~/ 10) * 10;
+    // Round to nearest rupee
+    return totalPrice.round();
   }
 
   static String generateOTP() {

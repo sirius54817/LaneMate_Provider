@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
+import 'package:razorpay_flutter/razorpay_flutter.dart';
+import 'package:ecub_delivery/services/wallet_service.dart';
 
 class EarningsPage extends StatefulWidget {
   const EarningsPage({super.key});
@@ -16,11 +18,21 @@ class _Earningsklu_pagetate extends State<EarningsPage> {
   List<Map<String, dynamic>> _deliveryHistory = [];
   double _totalEarnings = 0;
   StreamSubscription? _agentSubscription;
+  final WalletService _walletService = WalletService();
+  double _walletBalance = 0.0;
 
   @override
   void initState() {
     super.initState();
     _setupAgentStream();
+    _walletService.getWalletStream().listen((snapshot) {
+      if (mounted) {
+        setState(() {
+          final data = snapshot.data() as Map<String, dynamic>?;
+          _walletBalance = (data?['balance'] ?? 0.0).toDouble();
+        });
+      }
+    });
   }
 
   @override
@@ -266,6 +278,9 @@ class _Earningsklu_pagetate extends State<EarningsPage> {
                     ),
                   ),
                   SizedBox(height: 24),
+                  // Wallet Section
+                  _buildWalletSection(),
+                  SizedBox(height: 24),
                   // Enhanced Rides History Section
                   Expanded(
                     child: Container(
@@ -453,6 +468,169 @@ class _Earningsklu_pagetate extends State<EarningsPage> {
               ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildWalletSection() {
+    return Container(
+      padding: EdgeInsets.all(16),
+      margin: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.shade200,
+            blurRadius: 10,
+            offset: Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Wallet Balance',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: Colors.blue[900],
+            ),
+          ),
+          SizedBox(height: 8),
+          Text(
+            '₹${_walletBalance.toStringAsFixed(2)}',
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+              color: Colors.green[700],
+            ),
+          ),
+          SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: ElevatedButton(
+                  onPressed: () => _showAddMoneyDialog(),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green,
+                    padding: EdgeInsets.symmetric(vertical: 12),
+                  ),
+                  child: Text('Add Money'),
+                ),
+              ),
+              SizedBox(width: 12),
+              Expanded(
+                child: ElevatedButton(
+                  onPressed: () => _showWithdrawDialog(),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue,
+                    padding: EdgeInsets.symmetric(vertical: 12),
+                  ),
+                  child: Text('Withdraw'),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showAddMoneyDialog() {
+    final amountController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Add Money to Wallet'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: amountController,
+              keyboardType: TextInputType.number,
+              decoration: InputDecoration(
+                labelText: 'Amount',
+                prefixText: '₹',
+              ),
+            ),
+            SizedBox(height: 8),
+            Text(
+              'Transaction fee: ₹${WalletService.TRANSACTION_FEE}',
+              style: TextStyle(color: Colors.grey[600], fontSize: 12),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final amount = double.tryParse(amountController.text);
+              if (amount != null && amount > 0) {
+                _walletService.addMoney(amount);
+                Navigator.pop(context);
+              }
+            },
+            child: Text('Add'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showWithdrawDialog() {
+    final amountController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Withdraw Money'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: amountController,
+              keyboardType: TextInputType.number,
+              decoration: InputDecoration(
+                labelText: 'Amount',
+                prefixText: '₹',
+              ),
+            ),
+            SizedBox(height: 8),
+            Text(
+              'Transaction fee: ₹${WalletService.TRANSACTION_FEE}',
+              style: TextStyle(color: Colors.grey[600], fontSize: 12),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final amount = double.tryParse(amountController.text);
+              if (amount != null && amount > 0) {
+                try {
+                  await _walletService.withdrawMoney(amount);
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Withdrawal request submitted')),
+                  );
+                } catch (e) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text(e.toString())),
+                  );
+                }
+              }
+            },
+            child: Text('Withdraw'),
+          ),
+        ],
       ),
     );
   }

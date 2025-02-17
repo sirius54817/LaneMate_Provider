@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
+import 'package:razorpay_flutter/razorpay_flutter.dart';
+import 'package:ecub_delivery/services/wallet_service.dart';
 
 class EarningsPage extends StatefulWidget {
   const EarningsPage({super.key});
@@ -16,17 +18,48 @@ class _EarningsPageState extends State<EarningsPage> {
   List<Map<String, dynamic>> _deliveryHistory = [];
   double _totalEarnings = 0;
   StreamSubscription? _agentSubscription;
+  final WalletService _walletService = WalletService();
+  double _walletBalance = 0.0;
+  StreamSubscription? _paymentSuccessSubscription;
+  bool _showSuccessAnimation = false;
 
   @override
   void initState() {
     super.initState();
     _setupAgentStream();
+    _setupWalletListeners();
   }
 
-  @override
-  void dispose() {
-    _agentSubscription?.cancel();
-    super.dispose();
+  void _setupWalletListeners() {
+    // Listen for wallet balance changes
+    _walletService.getWalletStream().listen((snapshot) {
+      if (mounted) {
+        setState(() {
+          final data = snapshot.data() as Map<String, dynamic>?;
+          _walletBalance = (data?['balance'] ?? 0.0).toDouble();
+        });
+      }
+    });
+
+    // Listen for payment success events
+    _paymentSuccessSubscription = _walletService.onPaymentSuccess.listen((data) {
+      if (mounted) {
+        print('Payment success received: $data'); // Debug log
+        _showPaymentSuccessDialog(data['amount']);
+      }
+    });
+
+    // Listen for payment errors
+    _walletService.onPaymentError.listen((error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Payment failed: $error'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    });
   }
 
   void _setupAgentStream() async {
@@ -189,7 +222,7 @@ class _EarningsPageState extends State<EarningsPage> {
               padding: EdgeInsets.all(20),
               child: Column(
                 children: [
-                  // Enhanced Earnings Summary Card
+                  // Replace Earnings Card with Wallet Balance Card
                   Container(
                     padding: EdgeInsets.all(24),
                     decoration: BoxDecoration(
@@ -234,14 +267,14 @@ class _EarningsPageState extends State<EarningsPage> {
                                     borderRadius: BorderRadius.circular(12),
                                   ),
                                   child: Icon(
-                                    Icons.payments,
+                                    Icons.wallet,
                                     color: Colors.white,
                                     size: 24,
                                   ),
                                 ),
                                 SizedBox(width: 12),
                                 Text(
-                                  'Total Earnings',
+                                  'Wallet Balance',
                                   style: TextStyle(
                                     color: Colors.white,
                                     fontSize: 22,
@@ -252,7 +285,7 @@ class _EarningsPageState extends State<EarningsPage> {
                             ),
                             SizedBox(height: 20),
                             Text(
-                              '₹${_totalEarnings.toStringAsFixed(2)}',
+                              '₹${_walletBalance.toStringAsFixed(2)}',
                               style: TextStyle(
                                 fontSize: 36,
                                 fontWeight: FontWeight.bold,
@@ -260,13 +293,43 @@ class _EarningsPageState extends State<EarningsPage> {
                                 letterSpacing: 1,
                               ),
                             ),
+                            SizedBox(height: 16),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: ElevatedButton(
+                                    onPressed: () => _showAddMoneyDialog(),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.white,
+                                      foregroundColor: Colors.green.shade700,
+                                      elevation: 0,
+                                      padding: EdgeInsets.symmetric(vertical: 12),
+                                    ),
+                                    child: Text('Add Money'),
+                                  ),
+                                ),
+                                SizedBox(width: 12),
+                                Expanded(
+                                  child: ElevatedButton(
+                                    onPressed: () => _showWithdrawDialog(),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.white.withOpacity(0.2),
+                                      foregroundColor: Colors.white,
+                                      elevation: 0,
+                                      padding: EdgeInsets.symmetric(vertical: 12),
+                                    ),
+                                    child: Text('Withdraw'),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ],
                         ),
                       ],
                     ),
                   ),
                   SizedBox(height: 24),
-                  // Enhanced Rides History Section
+                  // Rides History Section remains the same
                   Expanded(
                     child: Container(
                       padding: EdgeInsets.all(24),
@@ -357,6 +420,365 @@ class _EarningsPageState extends State<EarningsPage> {
               ),
             ),
     );
+  }
+
+  void _showAddMoneyDialog() {
+    final amountController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
+        title: Column(
+          children: [
+            Container(
+              padding: EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.green.shade50,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(
+                Icons.add_card,
+                color: Colors.green.shade700,
+                size: 32,
+              ),
+            ),
+            SizedBox(height: 16),
+            Text(
+              'Add Money to Wallet',
+              style: TextStyle(
+                color: Colors.green.shade900,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+        content: Container(
+          width: double.maxFinite,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: amountController,
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                  labelText: 'Amount',
+                  labelStyle: TextStyle(color: Colors.green.shade700),
+                  prefixText: '₹',
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: Colors.green.shade400),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: Colors.grey.shade300),
+                  ),
+                  filled: true,
+                  fillColor: Colors.green.shade50,
+                ),
+              ),
+              SizedBox(height: 12),
+              // Compact Transaction Fee Info
+              Row(
+                children: [
+                  Icon(
+                    Icons.info_outline,
+                    size: 16,
+                    color: Colors.green.shade700,
+                  ),
+                  SizedBox(width: 8),
+                  Text(
+                    'Transaction Fee: ',
+                    style: TextStyle(
+                      color: Colors.green.shade900,
+                      fontSize: 12,
+                    ),
+                  ),
+                  Text(
+                    '₹${WalletService.TRANSACTION_FEE}',
+                    style: TextStyle(
+                      color: Colors.green.shade700,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(
+              'Cancel',
+              style: TextStyle(color: Colors.grey.shade700),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final amount = double.tryParse(amountController.text);
+              if (amount != null && amount > 0) {
+                _walletService.addMoney(amount);
+                Navigator.pop(context);
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green.shade600,
+              foregroundColor: Colors.white,
+              padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            child: Text('Add Money'),
+          ),
+        ],
+        actionsPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      ),
+    );
+  }
+
+  void _showWithdrawDialog() {
+    final amountController = TextEditingController();
+    final maxWithdrawable = _walletBalance - WalletService.TRANSACTION_FEE;
+    String? errorText;
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: Column(
+            children: [
+              Container(
+                padding: EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade50,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  Icons.account_balance,
+                  color: Colors.blue.shade700,
+                  size: 32,
+                ),
+              ),
+              SizedBox(height: 16),
+              Text(
+                'Withdraw Money',
+                style: TextStyle(
+                  color: Colors.blue.shade900,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          content: Container(
+            width: double.maxFinite,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: amountController,
+                  keyboardType: TextInputType.number,
+                  onChanged: (value) {
+                    setState(() {
+                      final amount = double.tryParse(value) ?? 0;
+                      if (amount <= 0) {
+                        errorText = 'Please enter a valid amount';
+                      } else if (amount + WalletService.TRANSACTION_FEE > _walletBalance) {
+                        errorText = 'Insufficient balance. ';
+                      } else {
+                        errorText = null;
+                      }
+                    });
+                  },
+                  decoration: InputDecoration(
+                    labelText: 'Amount',
+                    labelStyle: TextStyle(color: Colors.blue.shade700),
+                    prefixText: '₹',
+                    errorText: errorText,
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(color: Colors.blue.shade400),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(color: Colors.grey.shade300),
+                    ),
+                    filled: true,
+                    fillColor: Colors.blue.shade50,
+                  ),
+                ),
+                SizedBox(height: 12),
+                // Compact Transaction Fee Info
+                Row(
+                  children: [
+                    Icon(
+                      Icons.info_outline,
+                      size: 16,
+                      color: Colors.blue.shade700,
+                    ),
+                    SizedBox(width: 8),
+                    Text(
+                      'Transaction Fee: ',
+                      style: TextStyle(
+                        color: Colors.blue.shade900,
+                        fontSize: 12,
+                      ),
+                    ),
+                    Text(
+                      '₹${WalletService.TRANSACTION_FEE}',
+                      style: TextStyle(
+                        color: Colors.blue.shade700,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+                SizedBox(height: 8),
+                Text(
+                  'Max withdrawable: ₹${maxWithdrawable.toStringAsFixed(2)}',
+                  style: TextStyle(
+                    color: Colors.grey.shade600,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text(
+                'Cancel',
+                style: TextStyle(color: Colors.grey.shade700),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: errorText != null ? null : () async {
+                final amount = double.tryParse(amountController.text);
+                if (amount != null && amount > 0) {
+                  try {
+                    await _walletService.withdrawMoney(amount);
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Withdrawal request submitted'),
+                        backgroundColor: Colors.blue.shade600,
+                        behavior: SnackBarBehavior.floating,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                    );
+                  } catch (e) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(e.toString()),
+                        backgroundColor: Colors.red,
+                        behavior: SnackBarBehavior.floating,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                    );
+                  }
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue.shade600,
+                foregroundColor: Colors.white,
+                padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: Text('Withdraw'),
+            ),
+          ],
+          actionsPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        ),
+      ),
+    );
+  }
+
+  void _showPaymentSuccessDialog(double amount) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Container(
+          padding: EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Image.asset(
+                'assets/Tick.gif',
+                height: 100,
+                width: 100,
+              ),
+              SizedBox(height: 24),
+              Text(
+                'Payment Successful!',
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.green.shade700,
+                ),
+              ),
+              SizedBox(height: 16),
+              Text(
+                '₹${amount.toStringAsFixed(2)} added to wallet',
+                style: TextStyle(
+                  fontSize: 18,
+                  color: Colors.grey.shade800,
+                ),
+              ),
+              SizedBox(height: 24),
+              Text(
+                'New Balance: ₹${_walletBalance.toStringAsFixed(2)}',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500,
+                  color: Colors.green.shade600,
+                ),
+              ),
+              SizedBox(height: 24),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green.shade600,
+                  foregroundColor: Colors.white,
+                  padding: EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: Text('Done'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _agentSubscription?.cancel();
+    _paymentSuccessSubscription?.cancel();
+    super.dispose();
   }
 
   Widget _buildDeliveryCard(Map<String, dynamic> delivery) {
