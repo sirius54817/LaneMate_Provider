@@ -10,82 +10,82 @@ class EarningsPage extends StatefulWidget {
   const EarningsPage({super.key});
 
   @override
-  State<EarningsPage> createState() => _Earningsklu_pagetate();
+  State<EarningsPage> createState() => _EarningsKLUState();
 }
 
-class _Earningsklu_pagetate extends State<EarningsPage> {
+class _EarningsKLUState extends State<EarningsPage> with SingleTickerProviderStateMixin {
   bool _isLoading = true;
-  List<Map<String, dynamic>> _deliveryHistory = [];
+  List<Map<String, dynamic>> _rideHistory = [];
   double _totalEarnings = 0;
-  StreamSubscription? _agentSubscription;
+  StreamSubscription? _riderSubscription;
   final WalletService _walletService = WalletService();
   double _walletBalance = 0.0;
+  StreamSubscription? _paymentSuccessSubscription;
+  bool _showSuccessAnimation = false;
+  late TabController _tabController;
+  List<Map<String, dynamic>> _transactions = [];
 
   @override
   void initState() {
     super.initState();
-    _setupAgentStream();
-    _walletService.getWalletStream().listen((snapshot) {
-      if (mounted) {
-        setState(() {
-          final data = snapshot.data() as Map<String, dynamic>?;
-          _walletBalance = (data?['balance'] ?? 0.0).toDouble();
-        });
-      }
-    });
+    _tabController = TabController(length: 2, vsync: this);
+    _setupRiderStream();
+    _setupWalletListeners();
+    _loadTransactions();
   }
 
   @override
   void dispose() {
-    _agentSubscription?.cancel();
+    _riderSubscription?.cancel();
+    _paymentSuccessSubscription?.cancel();
+    _tabController.dispose();
     super.dispose();
   }
 
-  void _setupAgentStream() async {
+  void _setupRiderStream() async {
     try {
       final currentUser = FirebaseAuth.instance.currentUser;
       if (currentUser?.email == null) {
         throw 'No authenticated user found';
       }
 
-      // Create a stream for the agent document
-      final Stream<QuerySnapshot> agentStream = FirebaseFirestore.instance
-          .collection('delivery_agent')
-          .where('email', isEqualTo: currentUser!.email)
+      // Create a stream for KLU rides
+      final Stream<QuerySnapshot> riderStream = FirebaseFirestore.instance
+          .collection('klu_ride_orders')
+          .where('rider_id', isEqualTo: currentUser!.uid)
           .snapshots();
 
-      _agentSubscription = agentStream.listen(
+      _riderSubscription = riderStream.listen(
         (snapshot) {
-          if (snapshot.docs.isEmpty) {
-            if (mounted) {
-              setState(() {
-                _isLoading = false;
-                _deliveryHistory = [];
-                _totalEarnings = 0;
-              });
-            }
-            return;
-          }
-
-          final agentData = snapshot.docs.first.data() as Map<String, dynamic>;
-          
           if (mounted) {
             setState(() {
-              _deliveryHistory = List<Map<String, dynamic>>.from(
-                agentData['delivery_history'] ?? []
-              )..sort((a, b) => (b['timestamp'] as Timestamp)
-                  .compareTo(a['timestamp'] as Timestamp)); // Sort by newest first
-              _totalEarnings = (agentData['salary'] ?? 0).toDouble();
+              _rideHistory = snapshot.docs.map((doc) {
+                final data = doc.data() as Map<String, dynamic>;
+                return {
+                  ...data,
+                  'id': doc.id,
+                  'amount': data['calculatedPrice'],
+                  'timestamp': data['request_time'] ?? Timestamp.now(),
+                  'location': '${data['pickup']} to ${data['destination']}',
+                  'distance': '${data['distance']} km',
+                  'type': 'ride',
+                };
+              }).toList()
+                ..sort((a, b) => (b['timestamp'] as Timestamp)
+                    .compareTo(a['timestamp'] as Timestamp));
+              
+              _totalEarnings = _rideHistory.fold(
+                0, 
+                (sum, ride) => sum + (ride['amount'] as num)
+              );
               _isLoading = false;
             });
           }
         },
         onError: (error) {
-          print('Error in agent stream: $error');
+          print('Error in rider stream: $error');
           if (mounted) {
-            setState(() {
-              _isLoading = false;
-            });
+            setState(() => _isLoading = false);
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text('Error loading rides history: $error'),
@@ -96,11 +96,9 @@ class _Earningsklu_pagetate extends State<EarningsPage> {
         },
       );
     } catch (e) {
-      print('Error setting up agent stream: $e');
+      print('Error setting up rider stream: $e');
       if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
+        setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Failed to load rides history: $e'),
@@ -109,6 +107,21 @@ class _Earningsklu_pagetate extends State<EarningsPage> {
         );
       }
     }
+  }
+
+  void _setupWalletListeners() {
+    _walletService.getWalletStream().listen((snapshot) {
+      if (mounted) {
+        setState(() {
+          final data = snapshot.data() as Map<String, dynamic>?;
+          _walletBalance = (data?['balance'] ?? 0.0).toDouble();
+        });
+      }
+    });
+  }
+
+  void _loadTransactions() {
+    // Implementation of _loadTransactions method
   }
 
   @override
@@ -166,8 +179,8 @@ class _Earningsklu_pagetate extends State<EarningsPage> {
             ),
             onPressed: () async {
               setState(() => _isLoading = true);
-              await _agentSubscription?.cancel();
-              _setupAgentStream();
+              await _riderSubscription?.cancel();
+              _setupRiderStream();
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
                   content: Row(
@@ -201,7 +214,7 @@ class _Earningsklu_pagetate extends State<EarningsPage> {
               padding: EdgeInsets.all(20),
               child: Column(
                 children: [
-                  // Enhanced Earnings Summary Card
+                  // Replace Earnings Card with Wallet Card
                   Container(
                     padding: EdgeInsets.all(24),
                     decoration: BoxDecoration(
@@ -246,14 +259,14 @@ class _Earningsklu_pagetate extends State<EarningsPage> {
                                     borderRadius: BorderRadius.circular(12),
                                   ),
                                   child: Icon(
-                                    Icons.payments,
+                                    Icons.wallet,
                                     color: Colors.white,
                                     size: 24,
                                   ),
                                 ),
                                 SizedBox(width: 12),
                                 Text(
-                                  'Total Earnings',
+                                  'Wallet Balance',
                                   style: TextStyle(
                                     color: Colors.white,
                                     fontSize: 22,
@@ -264,7 +277,7 @@ class _Earningsklu_pagetate extends State<EarningsPage> {
                             ),
                             SizedBox(height: 20),
                             Text(
-                              '₹${_totalEarnings.toStringAsFixed(2)}',
+                              '₹${_walletBalance.toStringAsFixed(2)}',
                               style: TextStyle(
                                 fontSize: 36,
                                 fontWeight: FontWeight.bold,
@@ -272,14 +285,41 @@ class _Earningsklu_pagetate extends State<EarningsPage> {
                                 letterSpacing: 1,
                               ),
                             ),
+                            SizedBox(height: 16),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: ElevatedButton(
+                                    onPressed: () => _showAddMoneyDialog(),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.white,
+                                      foregroundColor: Colors.green.shade700,
+                                      elevation: 0,
+                                      padding: EdgeInsets.symmetric(vertical: 12),
+                                    ),
+                                    child: Text('Add Money'),
+                                  ),
+                                ),
+                                SizedBox(width: 12),
+                                Expanded(
+                                  child: ElevatedButton(
+                                    onPressed: () => _showWithdrawDialog(),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.white.withOpacity(0.2),
+                                      foregroundColor: Colors.white,
+                                      elevation: 0,
+                                      padding: EdgeInsets.symmetric(vertical: 12),
+                                    ),
+                                    child: Text('Withdraw'),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ],
                         ),
                       ],
                     ),
                   ),
-                  SizedBox(height: 24),
-                  // Wallet Section
-                  _buildWalletSection(),
                   SizedBox(height: 24),
                   // Enhanced Rides History Section
                   Expanded(
@@ -327,7 +367,7 @@ class _Earningsklu_pagetate extends State<EarningsPage> {
                           ),
                           SizedBox(height: 20),
                           Expanded(
-                            child: _deliveryHistory.isEmpty
+                            child: _rideHistory.isEmpty
                                 ? Center(
                                     child: Column(
                                       mainAxisAlignment: MainAxisAlignment.center,
@@ -358,9 +398,9 @@ class _Earningsklu_pagetate extends State<EarningsPage> {
                                   )
                                 : ListView.builder(
                                     physics: BouncingScrollPhysics(),
-                                    itemCount: _deliveryHistory.length,
+                                    itemCount: _rideHistory.length,
                                     itemBuilder: (context, index) {
-                                      return _buildDeliveryCard(_deliveryHistory[index]);
+                                      return _buildDeliveryCard(_rideHistory[index]);
                                     },
                                   ),
                           ),
@@ -374,10 +414,9 @@ class _Earningsklu_pagetate extends State<EarningsPage> {
     );
   }
 
-  Widget _buildDeliveryCard(Map<String, dynamic> delivery) {
-    final timestamp = delivery['timestamp'] as Timestamp;
+  Widget _buildDeliveryCard(Map<String, dynamic> ride) {
+    final timestamp = ride['timestamp'] as Timestamp;
     final date = DateFormat('MMM dd, yyyy hh:mm a').format(timestamp.toDate());
-    final orderType = delivery['type'] ?? 'food';
 
     return Container(
       margin: EdgeInsets.only(bottom: 16),
@@ -385,12 +424,7 @@ class _Earningsklu_pagetate extends State<EarningsPage> {
         gradient: LinearGradient(
           begin: Alignment.centerLeft,
           end: Alignment.centerRight,
-          colors: [
-            orderType == 'medical' 
-                ? Colors.blue.shade50 
-                : Colors.green.shade50,
-            Colors.white,
-          ],
+          colors: [Colors.green.shade50, Colors.white],
         ),
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
@@ -406,21 +440,19 @@ class _Earningsklu_pagetate extends State<EarningsPage> {
         leading: Container(
           padding: EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: orderType == 'medical' 
-                ? Colors.blue.shade100.withOpacity(0.3)
-                : Colors.green.shade100.withOpacity(0.3),
+            color: Colors.green.shade100.withOpacity(0.3),
             borderRadius: BorderRadius.circular(12),
           ),
           child: Icon(
-            orderType == 'medical' ? Icons.medical_services : Icons.delivery_dining,
-            color: orderType == 'medical' ? Colors.blue.shade700 : Colors.green.shade700,
+            Icons.directions_car,
+            color: Colors.green.shade700,
             size: 24,
           ),
         ),
         title: Row(
           children: [
             Text(
-              '₹${delivery['amount']}',
+              '₹${ride['amount']}',
               style: TextStyle(
                 fontWeight: FontWeight.bold,
                 color: Colors.green.shade900,
@@ -431,17 +463,13 @@ class _Earningsklu_pagetate extends State<EarningsPage> {
             Container(
               padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
-                color: orderType == 'medical' 
-                    ? Colors.blue.shade50 
-                    : Colors.green.shade50,
+                color: Colors.green.shade50,
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(
-                orderType.toUpperCase(),
+                'KLU RIDE',
                 style: TextStyle(
-                  color: orderType == 'medical' 
-                      ? Colors.blue.shade700 
-                      : Colors.green.shade700,
+                  color: Colors.green.shade700,
                   fontWeight: FontWeight.w500,
                   fontSize: 12,
                 ),
@@ -458,82 +486,16 @@ class _Earningsklu_pagetate extends State<EarningsPage> {
               style: TextStyle(color: Colors.grey.shade600),
             ),
             Text(
-              delivery['location'] ?? 'Location not available',
+              ride['location'] ?? 'Location not available',
               style: TextStyle(color: Colors.grey.shade700),
             ),
-            if (delivery['distance'] != null)
+            if (ride['distance'] != null)
               Text(
-                'Distance: ${delivery['distance']}',
+                'Distance: ${ride['distance']}',
                 style: TextStyle(color: Colors.grey.shade600),
               ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildWalletSection() {
-    return Container(
-      padding: EdgeInsets.all(16),
-      margin: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.shade200,
-            blurRadius: 10,
-            offset: Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Wallet Balance',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: Colors.blue[900],
-            ),
-          ),
-          SizedBox(height: 8),
-          Text(
-            '₹${_walletBalance.toStringAsFixed(2)}',
-            style: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-              color: Colors.green[700],
-            ),
-          ),
-          SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: () => _showAddMoneyDialog(),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green,
-                    padding: EdgeInsets.symmetric(vertical: 12),
-                  ),
-                  child: Text('Add Money'),
-                ),
-              ),
-              SizedBox(width: 12),
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: () => _showWithdrawDialog(),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue,
-                    padding: EdgeInsets.symmetric(vertical: 12),
-                  ),
-                  child: Text('Withdraw'),
-                ),
-              ),
-            ],
-          ),
-        ],
       ),
     );
   }
