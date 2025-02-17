@@ -125,44 +125,34 @@ class AuthService {
     }
   }
 
-  Future<void> signin({
+  Future<UserCredential?> signin({
     required String email,
     required String password,
     required BuildContext context,
   }) async {
     try {
-      await FirebaseAuth.instance
-          .signInWithEmailAndPassword(email: email, password: password);
-
-      if (!context.mounted) return;
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (BuildContext context) => const MainNavigation()),
+      final credential = await FirebaseAuth.instance.signInWithEmailAndPassword(
+        email: email,
+        password: password,
       );
+      return credential;
     } on FirebaseAuthException catch (e) {
-      String message = '';
-      if (e.code == 'invalid-email') {
+      String message;
+      if (e.code == 'user-not-found') {
         message = 'No user found for that email.';
-      } else if (e.code == 'invalid-credential') {
+      } else if (e.code == 'wrong-password') {
         message = 'Wrong password provided for that user.';
       } else {
-        message = e.message ?? 'An error occurred during login.';
+        message = e.message ?? 'An error occurred';
       }
-      if (!context.mounted) return;
+      
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(message),
           backgroundColor: Colors.red,
         ),
       );
-    } catch (e) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('An error occurred. Please try again.'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      return null;
     }
   }
 

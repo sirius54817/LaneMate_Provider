@@ -19,6 +19,7 @@ class _LoginState extends State<Login> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   bool _isPasswordVisible = false;
+  bool _isLoggingIn = false;
 
   final List<String> carouselImages = [
     'assets/carousel1.png',
@@ -198,15 +199,24 @@ class _LoginState extends State<Login> {
           borderRadius: BorderRadius.circular(14),
         ),
       ),
-      onPressed: _performLogin,
-      child: const Text(
-        "Sign In",
-        style: TextStyle(
-          color: Colors.white,
-          fontWeight: FontWeight.bold,
-          fontSize: 16,
-        ),
-      ),
+      onPressed: _isLoggingIn ? null : _performLogin,
+      child: _isLoggingIn
+          ? SizedBox(
+              height: 20,
+              width: 20,
+              child: CircularProgressIndicator(
+                color: Colors.white,
+                strokeWidth: 2,
+              ),
+            )
+          : const Text(
+              "Sign In",
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+              ),
+            ),
     );
   }
 
@@ -238,6 +248,8 @@ class _LoginState extends State<Login> {
   }
 
   void _performLogin() async {
+    setState(() => _isLoggingIn = true);
+
     try {
       // Check if user exists in users collection
       final userSnapshot = await FirebaseFirestore.instance
@@ -246,23 +258,42 @@ class _LoginState extends State<Login> {
           .get();
 
       if (userSnapshot.docs.isEmpty) {
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('No account found with this email'),
             backgroundColor: Colors.red,
           ),
         );
+        setState(() => _isLoggingIn = false);
         return;
       }
 
-      // Perform sign in
-      await AuthService().signin(
+      // Attempt to sign in and wait for the result
+      final UserCredential? userCredential = await AuthService().signin(
         email: _emailController.text,
         password: _passwordController.text,
         context: context,
       );
 
-      if (!context.mounted) return;
+      // If sign in failed or user is null, show incorrect password message
+      if (userCredential == null || userCredential.user == null) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Incorrect password'),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 2),
+            behavior: SnackBarBehavior.floating, // Makes it float above content
+            margin: EdgeInsets.all(10), // Adds margin around the snackbar
+          ),
+        );
+        setState(() => _isLoggingIn = false);
+        return;
+      }
+
+      // Only proceed with navigation if authentication was successful
+      if (!mounted) return;
 
       // Check email domain and redirect accordingly
       final email = _emailController.text.toLowerCase();
@@ -285,7 +316,7 @@ class _LoginState extends State<Login> {
       }
 
       // After successful login, check if user has completed driver verification
-      final userId = FirebaseAuth.instance.currentUser?.uid;
+      final userId = userCredential.user?.uid;
       if (userId != null) {
         final driverVerification = await FirebaseFirestore.instance
             .collection('driver_verifications')
@@ -295,9 +326,8 @@ class _LoginState extends State<Login> {
         if (driverVerification.exists) {
           final isVerified = driverVerification.data()?['isOverallDataValid'] ?? false;
           if (!isVerified) {
-            // Show a message about pending verification if they've submitted docs
             final hasSubmitted = driverVerification.data()?['submittedAt'] != null;
-            if (hasSubmitted) {
+            if (hasSubmitted && mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
                   content: Text('Your driver verification is pending approval'),
@@ -309,13 +339,19 @@ class _LoginState extends State<Login> {
         }
       }
     } catch (e) {
-      if (!context.mounted) return;
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Login failed: ${e.toString()}'),
           backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+          margin: EdgeInsets.all(10),
         ),
       );
+    } finally {
+      if (mounted) {
+        setState(() => _isLoggingIn = false);
+      }
     }
   }
 }
