@@ -82,7 +82,7 @@ class RideService {
 
   // Get route points from Google Maps API
   Future<List<LatLng>> getRoutePoints(LatLng start, LatLng end) async {
-    final apiKey = 'AIzaSyDBRvts55sYzQ0hcPcF0qp6ApnwW-hHmYo';
+    final apiKey = 'AIzaSyApq25cUgw1k5tyFJVI4Ffd49bhg116rkc';
     final polylinePoints = PolylinePoints();
     
     try {
@@ -105,7 +105,7 @@ class RideService {
 
   // Calculate distance between two points
   Future<double> calculateDistance(LatLng point1, LatLng point2) async {
-    final apiKey = 'AIzaSyDBRvts55sYzQ0hcPcF0qp6ApnwW-hHmYo';
+    final apiKey = 'AIzaSyApq25cUgw1k5tyFJVI4Ffd49bhg116rkc';
     final url = 'https://maps.googleapis.com/maps/api/distancematrix/json'
         '?origins=${point1.latitude},${point1.longitude}'
         '&destinations=${point2.latitude},${point2.longitude}'

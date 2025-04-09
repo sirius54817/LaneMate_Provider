@@ -45,6 +45,33 @@ flutter {
     source = "../.."
 }
 
+repositories {
+    google()
+    mavenCentral()
+    maven { url 'https://jitpack.io' }
+    maven { url 'https://maven.razorpay.com/releases' }
+    maven {
+        url "https://storage.googleapis.com/download.flutter.io"
+    }
+    maven {
+        url "https://dl.google.com/dl/android/maven2/"
+    }
+    maven {
+        url "https://maven.google.com"
+    }
+    maven {
+        url "https://jcenter.bintray.com"
+    }
+    maven {
+        url "https://artifactory.paytm.in/libs-release-local"
+    }
+    // Add Razorpay's repository with specific version
+    maven {
+        url "https://dl.bintray.com/razorpay/maven"
+    }
+}
+
 dependencies {
     implementation 'androidx.multidex:multidex:2.0.1'
+    implementation 'com.razorpay:checkout:1.6.26'
 }

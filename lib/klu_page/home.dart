@@ -246,7 +246,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
   Future<String?> getAddressFromLatLng(LatLng position) async {
     try {
-      final apiKey = 'AIzaSyDBRvts55sYzQ0hcPcF0qp6ApnwW-hHmYo';
+      final apiKey = 'AIzaSyApq25cUgw1k5tyFJVI4Ffd49bhg116rkc';
       final url = 'https://maps.googleapis.com/maps/api/geocode/json'
           '?latlng=${position.latitude},${position.longitude}'
           '&key=$apiKey';
@@ -280,13 +280,40 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     }
 
     try {
-      final apiKey = 'AIzaSyDBRvts55sYzQ0hcPcF0qp6ApnwW-hHmYo';
+      final apiKey = 'AIzaSyApq25cUgw1k5tyFJVI4Ffd49bhg116rkc';
       final url = 'https://maps.googleapis.com/maps/api/place/autocomplete/json'
           '?input=$query'
           '&key=$apiKey'
-          '&components=country:in';
+          '&components=country:in'
+          '&types=geocode|establishment';
 
-      final response = await http.get(Uri.parse(url));
+      // Add retry mechanism
+      http.Response? response;
+      int retries = 0;
+      const maxRetries = 3;
+      
+      while (retries < maxRetries) {
+        try {
+          response = await http.get(Uri.parse(url)).timeout(
+            Duration(seconds: 10),
+            onTimeout: () {
+              print('Place search API request timed out, attempt ${retries + 1}/$maxRetries');
+              throw TimeoutException('Request timed out');
+            },
+          );
+          break; // If successful, exit the loop
+        } catch (e) {
+          retries++;
+          if (retries >= maxRetries) rethrow; // If max retries reached, rethrow
+          print('Retrying place search API call, attempt ${retries + 1}/$maxRetries');
+          await Future.delayed(Duration(milliseconds: 1000 * retries)); // Exponential backoff
+        }
+      }
+      
+      if (response == null) {
+        throw Exception('Failed to get response after $maxRetries attempts');
+      }
+      
       final data = json.decode(response.body);
 
       if (data['status'] == 'OK') {
@@ -305,6 +332,18 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             _showStartSuggestions = false;  // Hide start suggestions
           }
         });
+      } else if (data['status'] == 'REQUEST_DENIED') {
+        print('API Key ERROR: ${data['error_message']}');
+        // Show error to user
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Google Maps API key error: API not authorized. Please enable Places API in Google Cloud Console.'),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 5),
+          ),
+        );
+      } else {
+        print('Places API error: ${data['status']} - ${data['error_message'] ?? 'Unknown error'}');
       }
     } catch (e) {
       print('Error searching places: $e');
@@ -342,22 +381,120 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   }
 
   Future<void> fetchCurrentLocation() async {
-    bool serviceEnabled = await locationController.serviceEnabled();
-    if (!serviceEnabled) {
-      serviceEnabled = await locationController.requestService();
-      if (!serviceEnabled) return;
-    }
+    try {
+      bool serviceEnabled = await locationController.serviceEnabled().timeout(
+        Duration(seconds: 10),
+        onTimeout: () {
+          print('Location service check timed out');
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Location service check timed out. Please try again.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+          return false;
+        },
+      );
+      
+      if (!serviceEnabled) {
+        serviceEnabled = await locationController.requestService().timeout(
+          Duration(seconds: 10),
+          onTimeout: () {
+            print('Location service request timed out');
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Please enable location services to use this feature.'),
+                backgroundColor: Colors.red,
+              ),
+            );
+            return false;
+          },
+        );
+        if (!serviceEnabled) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Location services are disabled. Please enable GPS in your device settings.'),
+              backgroundColor: Colors.red,
+              duration: Duration(seconds: 3),
+            ),
+          );
+          return;
+        }
+      }
 
-    PermissionStatus permissionGranted = await locationController.hasPermission();
-    if (permissionGranted == PermissionStatus.denied) {
-      permissionGranted = await locationController.requestPermission();
-      if (permissionGranted != PermissionStatus.granted) return;
-    }
+      PermissionStatus permissionGranted = await locationController.hasPermission().timeout(
+        Duration(seconds: 5),
+        onTimeout: () {
+          print('Location permission check timed out');
+          return PermissionStatus.denied;
+        },
+      );
+      
+      if (permissionGranted == PermissionStatus.denied) {
+        permissionGranted = await locationController.requestPermission().timeout(
+          Duration(seconds: 10),
+          onTimeout: () {
+            print('Location permission request timed out');
+            return PermissionStatus.denied;
+          },
+        );
+        if (permissionGranted != PermissionStatus.granted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Location permission denied. Please enable location permissions in app settings.'),
+              backgroundColor: Colors.red,
+              duration: Duration(seconds: 3),
+            ),
+          );
+          return;
+        }
+      }
 
-    LocationData locationData = await locationController.getLocation();
-    setState(() {
-      currentPosition = LatLng(locationData.latitude!, locationData.longitude!);
-    });
+      LocationData locationData = await locationController.getLocation().timeout(
+        Duration(seconds: 15),
+        onTimeout: () {
+          print('Getting location timed out');
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Failed to get your location. Please try again.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+          throw TimeoutException('Location request timed out');
+        },
+      );
+      
+      if (locationData.latitude == null || locationData.longitude == null) {
+        print('Invalid location data received');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not determine your location. Please try again.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+      
+      setState(() {
+        currentPosition = LatLng(locationData.latitude!, locationData.longitude!);
+      });
+      
+      // Move map camera to current location
+      if (_mapController != null) {
+        _mapController!.animateCamera(
+          CameraUpdate.newLatLngZoom(currentPosition!, 15),
+        );
+      }
+
+    } catch (e) {
+      print('Error fetching current location: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error getting location: ${e.toString().length > 50 ? e.toString().substring(0, 50) + '...' : e.toString()}'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   Future<void> _updateRoute() async {
@@ -388,19 +525,60 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
   Future<LatLng?> fetchCoordinatesFromPlaceName(String address) async {
     try {
-      final apiKey = 'AIzaSyDBRvts55sYzQ0hcPcF0qp6ApnwW-hHmYo';
+      final apiKey = 'AIzaSyApq25cUgw1k5tyFJVI4Ffd49bhg116rkc';
       final encodedAddress = Uri.encodeComponent(address);
       final url = 'https://maps.googleapis.com/maps/api/geocode/json'
           '?address=$encodedAddress'
           '&key=$apiKey'
           '&region=in';
       
-      final response = await http.get(Uri.parse(url));
+      print('Geocoding request: $url');
+      
+      // Add retry mechanism
+      http.Response? response;
+      int retries = 0;
+      const maxRetries = 3;
+      
+      while (retries < maxRetries) {
+        try {
+          response = await http.get(Uri.parse(url)).timeout(
+            Duration(seconds: 10),
+            onTimeout: () {
+              print('Geocoding API request timed out, attempt ${retries + 1}/$maxRetries');
+              throw TimeoutException('Request timed out');
+            },
+          );
+          break; // If successful, exit the loop
+        } catch (e) {
+          retries++;
+          if (retries >= maxRetries) rethrow; // If max retries reached, rethrow
+          print('Retrying geocoding API call, attempt ${retries + 1}/$maxRetries');
+          await Future.delayed(Duration(milliseconds: 1000 * retries)); // Exponential backoff
+        }
+      }
+      
+      if (response == null) {
+        throw Exception('Failed to get response after $maxRetries attempts');
+      }
+      
       final data = json.decode(response.body);
       
       if (response.statusCode == 200 && data['status'] == 'OK' && data['results'].isNotEmpty) {
         final location = data['results'][0]['geometry']['location'];
+        print('Successfully geocoded address to: lat=${location['lat']}, lng=${location['lng']}');
         return LatLng(location['lat'], location['lng']);
+      } else if (data['status'] == 'REQUEST_DENIED') {
+        print('API Key ERROR: ${data['error_message']}');
+        // Show error to user
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Google Maps API key error: API not authorized. Please enable Geocoding API in Google Cloud Console.'),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 5),
+          ),
+        );
+      } else {
+        print('Geocoding error: Status=${data['status']}, Message=${data['error_message'] ?? 'No results found'}');
       }
       return null;
     } catch (e) {
@@ -415,7 +593,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     final polylinePoints = PolylinePoints();
     try {
       final result = await polylinePoints.getRouteBetweenCoordinates(
-        'AIzaSyDBRvts55sYzQ0hcPcF0qp6ApnwW-hHmYo',
+        'AIzaSyApq25cUgw1k5tyFJVI4Ffd49bhg116rkc',
         PointLatLng(currentPosition!.latitude, currentPosition!.longitude),
         PointLatLng(destinationPosition!.latitude, destinationPosition!.longitude),
       );
@@ -446,7 +624,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   Future<void> fetchAndStoreEstimatedTimeOfArrival() async {
     if (currentPosition == null || destinationPosition == null) return;
 
-    final apiKey = 'AIzaSyDBRvts55sYzQ0hcPcF0qp6ApnwW-hHmYo';
+    final apiKey = 'AIzaSyApq25cUgw1k5tyFJVI4Ffd49bhg116rkc';
     final origin = '${currentPosition!.latitude},${currentPosition!.longitude}';
     final destination = '${destinationPosition!.latitude},${destinationPosition!.longitude}';
     final url = 'https://maps.googleapis.com/maps/api/distancematrix/json'
@@ -455,7 +633,15 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         '&key=$apiKey';
 
     try {
-      final response = await http.get(Uri.parse(url));
+      print('Distance Matrix API request: $url');
+      final response = await http.get(Uri.parse(url)).timeout(
+        Duration(seconds: 10),
+        onTimeout: () {
+          print('Distance Matrix API request timed out');
+          throw TimeoutException('Request timed out');
+        },
+      );
+      
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         if (data['status'] == 'OK') {
@@ -466,6 +652,18 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               distance = elements['distance']['text'];
             });
           }
+        } else if (data['status'] == 'REQUEST_DENIED') {
+          print('API Key ERROR: ${data['error_message']}');
+          // Show error to user
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Google Maps API key error: API not authorized. Please enable Distance Matrix API in Google Cloud Console.'),
+              backgroundColor: Colors.red,
+              duration: Duration(seconds: 5),
+            ),
+          );
+        } else {
+          print('Distance Matrix API error: ${data['status']} - ${data['error_message'] ?? 'Unknown error'}');
         }
       }
     } catch (e) {
@@ -935,7 +1133,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       _buildModeButton(
-                        title: 'Take  Ride',
+                        title: 'Take a Ride',
                         mode: RideMode.take,
                         icon: Icons.directions_car_filled,
                       ),
@@ -982,7 +1180,50 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                         controller: _startSearchController,
                         focusNode: _startFocusNode,
                         decoration: InputDecoration(
-                          prefixIcon: Icon(Icons.my_location, color: Colors.blue[700]),
+                          prefixIcon: InkWell(
+                            onTap: () async {
+                              // Show loading indicator
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Row(
+                                    children: [
+                                      SizedBox(
+                                        width: 20,
+                                        height: 20,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                      SizedBox(width: 12),
+                                      Text('Getting your current location...'),
+                                    ],
+                                  ),
+                                  duration: Duration(seconds: 2),
+                                  backgroundColor: Colors.blue,
+                                ),
+                              );
+                              
+                              // Get current location
+                              await fetchCurrentLocation();
+                              
+                              if (currentPosition != null) {
+                                // Get address for the current location
+                                final address = await getAddressFromLatLng(currentPosition!);
+                                
+                                // Update text field with current address
+                                setState(() {
+                                  _startSearchController.text = address ?? 'Current Location';
+                                });
+                                
+                                // If destination is already set, update route
+                                if (destinationPosition != null) {
+                                  await _updateRoute();
+                                }
+                              }
+                            },
+                            child: Icon(Icons.my_location, color: Colors.blue[700]),
+                          ),
                           hintText: 'Start Location',
                           hintStyle: TextStyle(color: Colors.grey[400]),
                           border: InputBorder.none,

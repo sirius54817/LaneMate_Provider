@@ -277,7 +277,7 @@ class _GoogleMapklu_pagetate extends State<GoogleMapPage> {
   }
 
   Future<void> fetchAndStoreEstimatedTimeOfArrival() async {
-    final apiKey = 'AIzaSyDBRvts55sYzQ0hcPcF0qp6ApnwW-hHmYo';
+    final apiKey = 'AIzaSyApq25cUgw1k5tyFJVI4Ffd49bhg116rkc';
     final origin = '${currentPosition!.latitude},${currentPosition!.longitude}';
     final destination = '${destinationPosition!.latitude},${destinationPosition!.longitude}';
     final url = 'https://maps.googleapis.com/maps/api/distancematrix/json?origins=$origin&destinations=$destination&key=$apiKey';
@@ -835,7 +835,7 @@ class _GoogleMapklu_pagetate extends State<GoogleMapPage> {
   Future<LatLng?> fetchCoordinatesFromPlaceName(String address) async {
     try {
       // Use a valid API key
-      final apiKey = 'AIzaSyDBRvts55sYzQ0hcPcF0qp6ApnwW-hHmYo'; // Use the same API key you're using for Distance Matrix
+      final apiKey = 'AIzaSyApq25cUgw1k5tyFJVI4Ffd49bhg116rkc'; // Use the same API key you're using for Distance Matrix
       
       // Properly encode the address for URL
       final encodedAddress = Uri.encodeComponent(address);
@@ -886,7 +886,7 @@ class _GoogleMapklu_pagetate extends State<GoogleMapPage> {
     
     try {
       final result = await polylinePoints.getRouteBetweenCoordinates(
-        'AIzaSyDBRvts55sYzQ0hcPcF0qp6ApnwW-hHmYo', // Replace with your actual API key
+        'AIzaSyApq25cUgw1k5tyFJVI4Ffd49bhg116rkc', // Replace with your actual API key
         PointLatLng(currentPosition!.latitude, currentPosition!.longitude),
         PointLatLng(destinationPosition!.latitude, destinationPosition!.longitude),
       );
